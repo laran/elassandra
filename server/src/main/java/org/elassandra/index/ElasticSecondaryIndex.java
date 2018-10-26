@@ -813,17 +813,17 @@ public class ElasticSecondaryIndex implements Index, ClusterStateListener {
                 Map<String,Object> mappingMap = (Map<String,Object>)mappingMetaData.getSourceAsMap();
                 Map<String,Object> metaMap = (mappingMap == null) ? null : (Map<String,Object>)mappingMap.get("_meta");
                 
-                this.refresh = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_SYNCHRONOUS_REFRESH_SETTING) || synchronousRefreshPattern.matcher(name).matches();
+                this.refresh = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_SYNCHRONOUS_REFRESH_SETTING) || synchronousRefreshPattern.matcher(name).matches();
                 logger.debug("index.type=[{}.{}] {}=[{}]", name, this.type, IndexMetaData.INDEX_SYNCHRONOUS_REFRESH_SETTING.getKey(), refresh);
                 
-                this.snapshot = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_SNAPSHOT_WITH_SSTABLE_SETTING);
-                this.includeNodeId = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INCLUDE_NODE_ID_SETTING);
+                this.snapshot = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_SNAPSHOT_WITH_SSTABLE_SETTING);
+                this.includeNodeId = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INCLUDE_NODE_ID_SETTING);
                 
-                this.index_on_compaction = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INDEX_ON_COMPACTION_SETTING);
-                this.index_static_columns = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_COLUMNS_SETTING);
-                this.index_static_only = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_ONLY_SETTING);
-                this.index_static_document = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_DOCUMENT_SETTING);
-                this.insert_only = getMetaSettings(metadata.settings(), indexService.getIndexSettings(), metaMap, IndexMetaData.INDEX_INDEX_INSERT_ONLY_SETTING);
+                this.index_on_compaction = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INDEX_ON_COMPACTION_SETTING);
+                this.index_static_columns = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_COLUMNS_SETTING);
+                this.index_static_only = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_ONLY_SETTING);
+                this.index_static_document = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INDEX_STATIC_DOCUMENT_SETTING);
+                this.insert_only = getMetaSettings(metadata.settings(), metaMap, IndexMetaData.INDEX_INDEX_INSERT_ONLY_SETTING);
                 
                 // lazy lock array initialization if needed
                 if (!this.insert_only && readBeforeWriteLocks == null) {
@@ -838,15 +838,17 @@ public class ElasticSecondaryIndex implements Index, ClusterStateListener {
             }
 
             // get _meta, index, cluster or system settings.
-            public boolean getMetaSettings(Settings metadataSettings, IndexSettings indexSettings, Map<String,Object> metaMap, Setting propName) {
-                final boolean value;
-                if (metaMap != null && metaMap.get(propName.getKey().substring(6)) != null) {
-                    // substring(6) = remove "index." from the index settings.
-                    value = XContentMapValues.nodeBooleanValue(metaMap.get(propName.getKey().substring(6)));
-                } else {
-                    value = (Boolean)indexSettings.getValue(propName);
-                }
-                logger.debug("index.type=[{}.{}] {}=[{}]", name, this.type, propName.getKey(), value);
+            public boolean getMetaSettings(Settings metadataSettings, Map<String,Object> metaMap, Setting indexSetting) {
+                boolean value = false;
+                IndexSettings indexSettings = indexService.getIndexSettings();
+                String key = indexSetting.getKey().substring(IndexMetaData.INDEX_SETTING_PREFIX.length());
+                if (metaMap != null && metaMap.get(key) != null) {
+                    value = XContentMapValues.nodeBooleanValue(metaMap.get(key));
+                    logger.debug("index.type=[{}.{}] {}=[{}] in _meta settings", name, this.type, key, value);
+                } else if (indexSettings.getValue(indexSetting) != null){
+                    value = (Boolean)indexSettings.getValue(indexSetting);
+                    logger.debug("index.type=[{}.{}] {}=[{}] in index setting", name, this.type, key, value);
+                } 
                 return value;
             }
             

@@ -142,6 +142,7 @@ import org.elasticsearch.index.IndexNotFoundException;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.engine.VersionConflictEngineException;
+import org.elasticsearch.index.engine.VersionLessInternalEngine;
 import org.elasticsearch.index.get.GetField;
 import org.elasticsearch.index.mapper.CompletionFieldMapper;
 import org.elasticsearch.index.mapper.DateFieldMapper;
@@ -322,21 +323,32 @@ public class ClusterService extends BaseClusterService {
     public static final String SETTING_SYSTEM_TOKEN_PRECISION_STEP = SYSTEM_PREFIX+TOKEN_PRECISION_STEP;
     public static final String SETTING_SYSTEM_TOKEN_RANGES_BITSET_CACHE = SYSTEM_PREFIX+TOKEN_RANGES_BITSET_CACHE;
     public static final String SETTING_SYSTEM_TOKEN_RANGES_QUERY_EXPIRE = SYSTEM_PREFIX+TOKEN_RANGES_QUERY_EXPIRE;
+    public static final String SETTING_CLUSTER_INCLUDE_NODE_ID = CLUSTER_PREFIX+INCLUDE_NODE_ID;
     
     // elassandra cluster settings
     public static final String SETTING_CLUSTER_MAPPING_UPDATE_TIMEOUT = CLUSTER_PREFIX+MAPPING_UPDATE_TIMEOUT;
-    public static final String SETTING_CLUSTER_SECONDARY_INDEX_CLASS = CLUSTER_PREFIX+SECONDARY_INDEX_CLASS;
-    public static final String SETTING_CLUSTER_SEARCH_STRATEGY_CLASS = CLUSTER_PREFIX+SEARCH_STRATEGY_CLASS;
-    public static final String SETTING_CLUSTER_INCLUDE_NODE_ID = CLUSTER_PREFIX+INCLUDE_NODE_ID;
-    public static final String SETTING_CLUSTER_INDEX_ON_COMPACTION = CLUSTER_PREFIX+INDEX_ON_COMPACTION;
-    public static final String SETTING_CLUSTER_SYNCHRONOUS_REFRESH = CLUSTER_PREFIX+SYNCHRONOUS_REFRESH;
-    public static final String SETTING_CLUSTER_DROP_ON_DELETE_INDEX = CLUSTER_PREFIX+DROP_ON_DELETE_INDEX;
-    public static final String SETTING_CLUSTER_SNAPSHOT_WITH_SSTABLE = CLUSTER_PREFIX+SNAPSHOT_WITH_SSTABLE;
-    public static final String SETTING_CLUSTER_VERSION_LESS_ENGINE = CLUSTER_PREFIX+VERSION_LESS_ENGINE;
-    public static final String SETTING_CLUSTER_TOKEN_PRECISION_STEP = CLUSTER_PREFIX+TOKEN_PRECISION_STEP;
-    public static final String SETTING_CLUSTER_TOKEN_RANGES_BITSET_CACHE = CLUSTER_PREFIX+TOKEN_RANGES_BITSET_CACHE;
+    public static final Setting<Integer> CLUSTER_MAPPING_UPDATE_TIMEOUT_SETTING = 
+            Setting.intSetting(SETTING_CLUSTER_MAPPING_UPDATE_TIMEOUT, Integer.getInteger(SETTING_SYSTEM_MAPPING_UPDATE_TIMEOUT, 30), Property.NodeScope, Property.Dynamic);
     
-    public static int defaultPrecisionStep = Integer.getInteger(SETTING_SYSTEM_TOKEN_PRECISION_STEP, 6);
+    public static final String SETTING_CLUSTER_SECONDARY_INDEX_CLASS = CLUSTER_PREFIX+SECONDARY_INDEX_CLASS;
+    public static final Setting<String> CLUSTER_SECONDARY_INDEX_CLASS_SETTING = 
+            Setting.simpleString(SETTING_CLUSTER_SECONDARY_INDEX_CLASS, System.getProperty(SETTING_SYSTEM_SECONDARY_INDEX_CLASS, ExtendedElasticSecondaryIndex.class.getName()), Property.NodeScope, Property.Dynamic);
+    
+    public static final String SETTING_CLUSTER_SEARCH_STRATEGY_CLASS = CLUSTER_PREFIX+SEARCH_STRATEGY_CLASS;
+    public static final Setting<String> CLUSTER_SEARCH_STRATEGY_CLASS_SETTING = 
+            Setting.simpleString(SETTING_CLUSTER_SEARCH_STRATEGY_CLASS, System.getProperty(SETTING_SYSTEM_SEARCH_STRATEGY_CLASS, PrimaryFirstSearchStrategy.class.getName()), Property.NodeScope, Property.Dynamic);
+    
+    public static final String SETTING_CLUSTER_DROP_ON_DELETE_INDEX = CLUSTER_PREFIX+DROP_ON_DELETE_INDEX;
+    public static final Setting<Boolean> CLUSTER_DROP_ON_DELETE_INDEX_SETTING = 
+            Setting.boolSetting(SETTING_CLUSTER_DROP_ON_DELETE_INDEX, Boolean.getBoolean(SYSTEM_PREFIX+DROP_ON_DELETE_INDEX), Property.NodeScope, Property.Dynamic);
+    
+    public static final String SETTING_CLUSTER_VERSION_LESS_ENGINE = CLUSTER_PREFIX+VERSION_LESS_ENGINE;
+    public static final Setting<String> CLUSTER_VERSION_LESS_ENGINE_SETTING = 
+            Setting.simpleString(SETTING_CLUSTER_VERSION_LESS_ENGINE, System.getProperty(SETTING_SYSTEM_VERSION_LESS_ENGINE, VersionLessInternalEngine.class.getName()), Property.NodeScope, Property.Final);
+    
+    public static final String SETTING_CLUSTER_TOKEN_RANGES_BITSET_CACHE = CLUSTER_PREFIX+TOKEN_RANGES_BITSET_CACHE;
+    public static final Setting<Boolean> CLUSTER_TOKEN_RANGES_BITSET_CACHE_SETTING = 
+            Setting.boolSetting(SETTING_CLUSTER_TOKEN_RANGES_BITSET_CACHE, Boolean.getBoolean(SYSTEM_PREFIX+TOKEN_RANGES_BITSET_CACHE), Property.NodeScope, Property.Dynamic);
     
     public static class DocPrimaryKey {
         public String[] names;
@@ -403,9 +415,7 @@ public class ClusterService extends BaseClusterService {
     protected final Semaphore metadataToSaveSemaphore = new Semaphore(0);
     
     protected final MappingUpdatedAction mappingUpdatedAction;
-    
-    public final static Class<? extends Index> defaultSecondaryIndexClass = ExtendedElasticSecondaryIndex.class;
-    
+   
     protected final PrimaryFirstSearchStrategy primaryFirstSearchStrategy = new PrimaryFirstSearchStrategy();
     protected final Map<String, AbstractSearchStrategy> strategies = new ConcurrentHashMap<String, AbstractSearchStrategy>();
     protected final Map<String, AbstractSearchStrategy.Router> routers = new ConcurrentHashMap<String, AbstractSearchStrategy.Router>();
@@ -494,9 +504,7 @@ public class ClusterService extends BaseClusterService {
     public Class<? extends AbstractSearchStrategy> searchStrategyClass(IndexMetaData indexMetaData, ClusterState state) {
         try {
             return AbstractSearchStrategy.getSearchStrategyClass(
-                    indexMetaData.getSettings().get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS,
-                    state.metaData().settings().get(ClusterService.SETTING_CLUSTER_SEARCH_STRATEGY_CLASS,PrimaryFirstSearchStrategy.class.getName()))
-                    );
+                    indexMetaData.getSettings().get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS, getClusterSettings().get(CLUSTER_SEARCH_STRATEGY_CLASS_SETTING)));
         } catch(ConfigurationException e) {
             logger.error((Supplier<?>) () -> new ParameterizedMessage("Bad search strategy class, fallback to [{}]", PrimaryFirstSearchStrategy.class.getName()), e);
             return PrimaryFirstSearchStrategy.class;
@@ -1447,7 +1455,7 @@ public class ClusterService extends BaseClusterService {
     
     public void createSecondaryIndices(final IndexMetaData indexMetaData) throws IOException {
         String ksName = indexMetaData.keyspace();
-        String className = indexMetaData.getSettings().get(IndexMetaData.SETTING_SECONDARY_INDEX_CLASS, this.settings.get(SETTING_CLUSTER_SECONDARY_INDEX_CLASS, defaultSecondaryIndexClass.getName()));
+        String className = indexMetaData.getSettings().get(IndexMetaData.SETTING_SECONDARY_INDEX_CLASS, getClusterSettings().get(CLUSTER_SECONDARY_INDEX_CLASS_SETTING));
         for(ObjectCursor<MappingMetaData> cursor: indexMetaData.getMappings().values()) {
             createSecondaryIndex(ksName, cursor.value, className);
         }
@@ -2000,7 +2008,7 @@ public class ClusterService extends BaseClusterService {
      * @throws Exception
      */
     public void blockingMappingUpdate(IndexService indexService, String type, String source) throws Exception {
-        TimeValue timeout = settings.getAsTime(SETTING_CLUSTER_MAPPING_UPDATE_TIMEOUT, TimeValue.timeValueSeconds(Integer.getInteger(SETTING_SYSTEM_MAPPING_UPDATE_TIMEOUT, 30)));
+        TimeValue timeout = settings.getAsTime(SETTING_CLUSTER_MAPPING_UPDATE_TIMEOUT, TimeValue.timeValueSeconds( getClusterSettings().get(CLUSTER_MAPPING_UPDATE_TIMEOUT_SETTING)));
         BlockingActionListener mappingUpdateListener = new BlockingActionListener();
         MetaDataMappingService metaDataMappingService = ElassandraDaemon.injector().getInstance(MetaDataMappingService.class);
         PutMappingClusterStateUpdateRequest putRequest = new PutMappingClusterStateUpdateRequest()

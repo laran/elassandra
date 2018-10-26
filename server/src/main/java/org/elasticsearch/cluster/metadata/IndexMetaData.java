@@ -334,63 +334,63 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
                 return s; 
             }, Property.Final, Property.IndexScope);
     
-    public static final String SETTING_SECONDARY_INDEX_CLASS = "index."+ClusterService.SECONDARY_INDEX_CLASS;
+    public static final String SETTING_SECONDARY_INDEX_CLASS = INDEX_SETTING_PREFIX+ClusterService.SECONDARY_INDEX_CLASS;
     public static final Setting<String> INDEX_SECONDARY_INDEX_CLASS_SETTING =
             Setting.simpleString(SETTING_SECONDARY_INDEX_CLASS, ExtendedElasticSecondaryIndex.class.getName(), Property.Final, Property.IndexScope);
     
-    public static final String SETTING_SEARCH_STRATEGY_CLASS = "index."+ClusterService.SEARCH_STRATEGY_CLASS; 
+    public static final String SETTING_SEARCH_STRATEGY_CLASS = INDEX_SETTING_PREFIX+ClusterService.SEARCH_STRATEGY_CLASS; 
     public static final Setting<Class<? extends AbstractSearchStrategy>> INDEX_SEARCH_STRATEGY_CLASS_SETTING =
             Setting.searchStrategy(SETTING_SEARCH_STRATEGY_CLASS, PrimaryFirstSearchStrategy.class.getName(), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_PARTITION_FUNCTION = "index.partition_function";
+    public static final String SETTING_PARTITION_FUNCTION = INDEX_SETTING_PREFIX+"partition_function";
     public static final Setting<String> INDEX_PARTITION_FUNCTION_SETTING =
             Setting.simpleString(SETTING_PARTITION_FUNCTION, StringPartitionFunction.class.getName(), Property.Final, Property.IndexScope);
     
-    public static final String SETTING_PARTITION_FUNCTION_CLASS = "index.partition_function_class"; 
+    public static final String SETTING_PARTITION_FUNCTION_CLASS = INDEX_SETTING_PREFIX+"partition_function_class"; 
     public static final Setting<String> INDEX_PARTITION_FUNCTION_CLASS_SETTING =
             Setting.simpleString(SETTING_PARTITION_FUNCTION_CLASS, MessageFormatPartitionFunction.class.getName(), Property.Final, Property.IndexScope);
     
-    public static final String SETTING_INCLUDE_NODE_ID = "index."+ClusterService.INCLUDE_NODE_ID; 
+    public static final String SETTING_INCLUDE_NODE_ID = INDEX_SETTING_PREFIX+ClusterService.INCLUDE_NODE_ID; 
     public static final Setting<Boolean> INDEX_INCLUDE_NODE_ID_SETTING =
             Setting.boolSetting(SETTING_INCLUDE_NODE_ID, false, Property.Final, Property.IndexScope);
     
-    public static final String SETTING_INDEX_ON_COMPACTION = "index."+ClusterService.INDEX_ON_COMPACTION; 
+    public static final String SETTING_INDEX_ON_COMPACTION = INDEX_SETTING_PREFIX+ClusterService.INDEX_ON_COMPACTION; 
     public static final Setting<Boolean> INDEX_INDEX_ON_COMPACTION_SETTING =
             Setting.boolSetting(SETTING_INDEX_ON_COMPACTION, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_INDEX_ON_COMPACTION), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_SYNCHRONOUS_REFRESH = "index."+ClusterService.SYNCHRONOUS_REFRESH; 
+    public static final String SETTING_SYNCHRONOUS_REFRESH = INDEX_SETTING_PREFIX+ClusterService.SYNCHRONOUS_REFRESH; 
     public static final Setting<Boolean> INDEX_SYNCHRONOUS_REFRESH_SETTING =
             Setting.boolSetting(SETTING_SYNCHRONOUS_REFRESH, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_SYNCHRONOUS_REFRESH), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_DROP_ON_DELETE_INDEX = "index."+ClusterService.DROP_ON_DELETE_INDEX; 
+    public static final String SETTING_DROP_ON_DELETE_INDEX = INDEX_SETTING_PREFIX+ClusterService.DROP_ON_DELETE_INDEX; 
     public static final Setting<Boolean> INDEX_DROP_ON_DELETE_INDEX_SETTING =
             Setting.boolSetting(SETTING_DROP_ON_DELETE_INDEX, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_DROP_ON_DELETE_INDEX), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_SNAPSHOT_WITH_SSTABLE = "index."+ClusterService.SNAPSHOT_WITH_SSTABLE; 
+    public static final String SETTING_SNAPSHOT_WITH_SSTABLE = INDEX_SETTING_PREFIX+ClusterService.SNAPSHOT_WITH_SSTABLE; 
     public static final Setting<Boolean> INDEX_SNAPSHOT_WITH_SSTABLE_SETTING =
             Setting.boolSetting(SETTING_SNAPSHOT_WITH_SSTABLE, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_SNAPSHOT_WITH_SSTABLE), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_TOKEN_RANGES_BITSET_CACHE = "index."+ClusterService.TOKEN_RANGES_BITSET_CACHE; 
+    public static final String SETTING_TOKEN_RANGES_BITSET_CACHE = INDEX_SETTING_PREFIX+ClusterService.TOKEN_RANGES_BITSET_CACHE; 
     public static final Setting<Boolean> INDEX_TOKEN_RANGES_BITSET_CACHE_SETTING =
             Setting.boolSetting(SETTING_TOKEN_RANGES_BITSET_CACHE, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_TOKEN_RANGES_BITSET_CACHE), Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_VERSION_LESS_ENGINE = "index."+ClusterService.VERSION_LESS_ENGINE; 
+    public static final String SETTING_VERSION_LESS_ENGINE = INDEX_SETTING_PREFIX+ClusterService.VERSION_LESS_ENGINE; 
     public static final Setting<Boolean> INDEX_VERSION_LESS_ENGINE_SETTING =
             Setting.boolSetting(SETTING_VERSION_LESS_ENGINE, true, Property.Final, Property.IndexScope);
     
-    public static final String SETTING_INDEX_STATIC_COLUMNS = "index."+ClusterService.INDEX_STATIC_COLUMNS; 
+    public static final String SETTING_INDEX_STATIC_COLUMNS = INDEX_SETTING_PREFIX+ClusterService.INDEX_STATIC_COLUMNS; 
     public static final Setting<Boolean> INDEX_INDEX_STATIC_COLUMNS_SETTING =
             Setting.boolSetting(SETTING_INDEX_STATIC_COLUMNS, false, Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_INDEX_STATIC_ONLY = "index."+ClusterService.INDEX_STATIC_ONLY; 
+    public static final String SETTING_INDEX_STATIC_ONLY = INDEX_SETTING_PREFIX+ClusterService.INDEX_STATIC_ONLY; 
     public static final Setting<Boolean> INDEX_INDEX_STATIC_ONLY_SETTING =
             Setting.boolSetting(SETTING_INDEX_STATIC_ONLY, false, Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_INDEX_STATIC_DOCUMENT = "index."+ClusterService.INDEX_STATIC_DOCUMENT; 
+    public static final String SETTING_INDEX_STATIC_DOCUMENT = INDEX_SETTING_PREFIX+ClusterService.INDEX_STATIC_DOCUMENT; 
     public static final Setting<Boolean> INDEX_INDEX_STATIC_DOCUMENT_SETTING =
             Setting.boolSetting(SETTING_INDEX_STATIC_DOCUMENT, false, Property.Dynamic, Property.IndexScope);
     
-    public static final String SETTING_INDEX_APPEND_ONLY = "index."+ClusterService.INDEX_INSERT_ONLY; 
+    public static final String SETTING_INDEX_APPEND_ONLY = INDEX_SETTING_PREFIX+ClusterService.INDEX_INSERT_ONLY; 
     public static final Setting<Boolean> INDEX_INDEX_INSERT_ONLY_SETTING =
             Setting.boolSetting(SETTING_INDEX_APPEND_ONLY, false, Property.Dynamic, Property.IndexScope);
     
