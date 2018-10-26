@@ -51,6 +51,7 @@ import org.apache.cassandra.db.marshal.CollectionType;
 import org.apache.cassandra.db.marshal.ListType;
 import org.apache.cassandra.db.marshal.MapType;
 import org.apache.cassandra.db.marshal.SetType;
+import org.apache.cassandra.db.marshal.SimpleDateType;
 import org.apache.cassandra.db.marshal.TupleType;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.db.marshal.UserType;
@@ -740,6 +741,8 @@ public class ClusterService extends BaseClusterService {
     public static ByteBuffer fromString(AbstractType<?> atype, String v) throws IOException {
         if (atype instanceof BytesType)
             return ByteBuffer.wrap(Base64.getDecoder().decode(v));
+        if (atype instanceof SimpleDateType)
+            return SimpleDateType.instance.getSerializer().serialize(Integer.parseInt(v));
         return atype.fromString(v);
     }
     

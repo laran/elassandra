@@ -69,6 +69,7 @@ import org.apache.cassandra.index.transactions.IndexTransaction;
 import org.apache.cassandra.index.transactions.IndexTransaction.Type;
 import org.apache.cassandra.io.util.FileUtils;
 import org.apache.cassandra.schema.IndexMetadata;
+import org.apache.cassandra.serializers.SimpleDateSerializer;
 import org.apache.cassandra.service.ElassandraDaemon;
 import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.Pair;
@@ -987,6 +988,32 @@ public class ElasticSecondaryIndex implements Index, ClusterStateListener {
                             query = start != null && end != null && ((InetAddress)start).equals((InetAddress)end) ?
                                     ipMapper.fieldType().termQuery(start, null) :
                                     ipMapper.fieldType().rangeQuery(start, end, includeLower, includeUpper, null);
+                            break;
+                        case DATE: {
+                                DateFieldMapper dateMapper = (DateFieldMapper)mapper;
+                                int l, u;
+                                if (start == null) {
+                                    l = Integer.MIN_VALUE;
+                                } else {
+                                    l = (Integer)start;
+                                    if (includeLower == false) {
+                                        ++l;
+                                    }
+                                }
+                                if (end == null) {
+                                    u = Integer.MAX_VALUE;
+                                } else {
+                                    u = (Integer)end;
+                                    if (includeUpper == false) {
+                                        --u;
+                                    }
+                                }
+                                query = LongPoint.newRangeQuery(dateMapper.name(), SimpleDateSerializer.dayToTimeInMillis(l), SimpleDateSerializer.dayToTimeInMillis(u));
+                                if (dateMapper.fieldType().hasDocValues()) {
+                                    Query dvQuery = SortedNumericDocValuesField.newSlowRangeQuery(dateMapper.name(), l, u);
+                                    query = new IndexOrDocValuesQuery(query, dvQuery);
+                                }
+                            }
                             break;
                         case TIMESTAMP: {
                                 DateFieldMapper dateMapper = (DateFieldMapper)mapper;
