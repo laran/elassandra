@@ -1023,7 +1023,7 @@ public class CassandraDiscovery extends AbstractLifecycleComponent implements Di
                     e);
             }
         };
-        clusterApplier.onNewClusterState("apply-locally-on-node[" + clusterChangedEvent.source() + "]", () -> this.clusterState, listener);
+        clusterApplier.onNewClusterState("apply-locally-on-node[" + clusterChangedEvent.source() + "]", () -> this.clusterState, listener, clusterChangedEvent.updateCqlSchema());
     }
 
     @Override

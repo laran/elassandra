@@ -58,7 +58,9 @@ public class ClusterChangedEvent {
     
     private final boolean peristMetaData;
     
-    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs) {
+    private final boolean updateCqlSchema;
+
+    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs, boolean updateCqlSchema) {
         Objects.requireNonNull(source, "source must not be null");
         Objects.requireNonNull(state, "state must not be null");
         Objects.requireNonNull(previousState, "previousState must not be null");
@@ -68,6 +70,11 @@ public class ClusterChangedEvent {
         this.nodesDelta = state.nodes().delta(previousState.nodes());
         this.peristMetaData = peristMetaData;
         this.taskInputs = taskInputs;
+        this.updateCqlSchema = updateCqlSchema;
+    }
+
+    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs) {
+        this(source, state, previousState, peristMetaData, taskInputs, false);
     }
 
     public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, TaskInputs taskInputs) {
@@ -82,6 +89,10 @@ public class ClusterChangedEvent {
         return peristMetaData;
     }
     
+    public boolean updateCqlSchema() {
+        return updateCqlSchema;
+    }
+
     /**
      * The source that caused this cluster event to be raised.
      */

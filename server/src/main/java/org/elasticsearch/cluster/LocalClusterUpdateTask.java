@@ -54,7 +54,14 @@ public abstract class LocalClusterUpdateTask implements ClusterStateTaskConfig, 
                 break;
             }
         }
-        return ClusterTasksResult.<LocalClusterUpdateTask>builder().successes(tasks).build(result, currentState, doPeristMetadata);
+        boolean updateCqlSchema = false;
+        for(LocalClusterUpdateTask task : tasks) {
+            if (task.doPresistMetaData()) {
+                updateCqlSchema = true;
+                break;
+            }
+        }
+        return ClusterTasksResult.<LocalClusterUpdateTask>builder().successes(tasks).build(result, currentState, doPeristMetadata, updateCqlSchema);
     }
 
     /**

@@ -276,6 +276,11 @@ public class MetaDataCreateIndexService extends AbstractComponent {
         }
         
         @Override
+        public boolean updateCqlSchema() {
+            return true;
+        }
+        
+        @Override
         public ClusterState execute(ClusterState currentState) throws Exception {
             Index createdIndex = null;
             String removalExtraInfo = null;
@@ -554,7 +559,7 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                         for (ObjectObjectCursor<String,MappingMetaData> cursor : indexMetaData.getMappings()) {
                             MappingMetaData mappingMd = cursor.value;
                             if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                                clusterService.updateTableSchema(indicesService.indexService(indexMetaData.getIndex()).mapperService(), mappingMd);
+                                clusterService.updateTableSchema(indexService.mapperService(), mappingMd, false);
                             }
                         }
                     } else {

@@ -75,6 +75,7 @@ public interface ClusterStateTaskExecutor<T> {
         public final ClusterState resultingState;
         public final Map<T, TaskResult> executionResults;
         public final boolean doPresistMetaData;
+        public final boolean updateCqlSchema;
         
         /**
          * Construct an execution result instance with a correspondence between the tasks and their execution result
@@ -82,13 +83,14 @@ public interface ClusterStateTaskExecutor<T> {
          * @param executionResults the correspondence between tasks and their outcome
          */
         ClusterTasksResult(ClusterState resultingState, Map<T, TaskResult> executionResults) {
-            this(resultingState, executionResults, false);
+            this(resultingState, executionResults, false, false);
         }
         
-        ClusterTasksResult(ClusterState resultingState, Map<T, TaskResult> executionResults, boolean doPresistMetaData) {
+        ClusterTasksResult(ClusterState resultingState, Map<T, TaskResult> executionResults, boolean doPresistMetaData, boolean updateCqlSchema) {
             this.resultingState = resultingState;
             this.executionResults = executionResults;
             this.doPresistMetaData = doPresistMetaData;
+            this.updateCqlSchema = updateCqlSchema;
         }
 
         public static <T> Builder<T> builder() {
@@ -130,18 +132,18 @@ public interface ClusterStateTaskExecutor<T> {
                 return new ClusterTasksResult<>(resultingState, executionResults);
             }
 
-            public ClusterTasksResult<T> build(ClusterState resultingState, boolean doPresistMetaData) {
-                return new ClusterTasksResult<>(resultingState, executionResults, doPresistMetaData);
+            public ClusterTasksResult<T> build(ClusterState resultingState, boolean doPresistMetaData, boolean updateCqlSchema) {
+                return new ClusterTasksResult<>(resultingState, executionResults, doPresistMetaData, updateCqlSchema);
             }
             
             ClusterTasksResult<T> build(ClusterTasksResult<T> result, ClusterState previousState) {
                 return new ClusterTasksResult<>(result.resultingState == null ? previousState : result.resultingState,
-                    executionResults, false);
+                    executionResults, false, false);
             }
             
-            ClusterTasksResult<T> build(ClusterTasksResult<T> result, ClusterState previousState, boolean doPresistMetaData) {
+            ClusterTasksResult<T> build(ClusterTasksResult<T> result, ClusterState previousState, boolean doPresistMetaData, boolean updateCqlSchema) {
                 return new ClusterTasksResult<>(result.resultingState == null ? previousState : result.resultingState,
-                    executionResults, doPresistMetaData);
+                    executionResults, doPresistMetaData, updateCqlSchema);
             }
         }
     }

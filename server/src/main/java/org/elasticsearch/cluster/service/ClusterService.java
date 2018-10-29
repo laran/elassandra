@@ -28,6 +28,7 @@ import com.google.common.net.InetAddresses;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.ColumnDefinition.Kind;
 import org.apache.cassandra.config.DatabaseDescriptor;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.cql3.CQL3Type;
@@ -1153,8 +1154,29 @@ public class ClusterService extends BaseClusterService {
         });
     }
     
+    class ColumnDescriptor {
+        String name;
+        String type;
+        ColumnDefinition.Kind kind;
+        int position;
+        
+        public ColumnDescriptor(String name) {
+            this(name, null);
+        }
+        
+        public ColumnDescriptor(String name, String type) {
+            this(name, type, Kind.REGULAR, -1);
+        }
+        
+        public ColumnDescriptor(String name, String type, Kind kind, int position) {
+            this.name = name;
+            this.type = type;
+            this.kind = kind;
+            this.position = position;
+        }
+    }
     
-    public void updateTableSchema(final MapperService mapperService, final MappingMetaData mappingMd) throws IOException {
+    public void updateTableSchema(final MapperService mapperService, final MappingMetaData mappingMd, final boolean doApply) throws IOException {
         try {
             String ksName = mapperService.keyspace();
             String cfName = ClusterService.typeToCfName(ksName, mappingMd.type());
@@ -1173,10 +1195,9 @@ public class ClusterService extends BaseClusterService {
             if (mappingMap.get("properties") != null)
                 columns.addAll( ((Map<String, Object>)mappingMap.get("properties")).keySet() );
             
-            logger.debug("Updating CQL3 schema {}.{} columns={}", ksName, cfName, columns);
-            StringBuilder columnsList = new StringBuilder();
-            Map<String,Boolean> columnsMap = new HashMap<String, Boolean>(columns.size());
-            String[] primaryKeyList = new String[(newTable) ? columns.size()+1 : cfm.partitionKeyColumns().size()+cfm.clusteringColumns().size()];
+            logger.debug("Updating CQL3 schema {}.{} apply={} columns={}", ksName, cfName, doApply, columns);
+            List<ColumnDescriptor> columnsList = new ArrayList<>();
+            ColumnDescriptor[] primaryKeyList = new ColumnDescriptor[(newTable) ? columns.size()+1 : cfm.partitionKeyColumns().size()+cfm.clusteringColumns().size()];
             int primaryKeyLength = 0;
             int partitionKeyLength = 0;
             for (String column : columns) {
@@ -1186,62 +1207,62 @@ public class ClusterService extends BaseClusterService {
                 if (column.equals(TokenFieldMapper.NAME))
                     continue; // ignore pseudo column known by Elasticsearch
                 
-                if (columnsList.length() > 0)
-                    columnsList.append(',');
-                
-                String cqlType = null;
-                boolean isStatic = false;
+                ColumnDescriptor colDesc = new ColumnDescriptor(column);
                 FieldMapper fieldMapper = docMapper.mappers().smartNameFieldMapper(column);
                 if (fieldMapper != null) {
                     if (fieldMapper instanceof GeoPointFieldMapper) {
                         ColumnDefinition cdef = (newTable) ? null : cfm.getColumnDefinition(new ColumnIdentifier(column, true));
                         if (cdef != null && cdef.type instanceof UTF8Type) {
                             // index geohash stored as text in cassandra.
-                            cqlType = "text";
+                            colDesc.type = "text";
                         } else {
                             // create a geo_point UDT to store lat,lon
-                            cqlType = GEO_POINT_TYPE;
+                            colDesc.type = GEO_POINT_TYPE;
                             buildGeoPointType(ksName);
                         }
                     } else if (fieldMapper instanceof GeoShapeFieldMapper) {
-                        cqlType = "text";
+                        colDesc.type = "text";
                     } else if (fieldMapper instanceof CompletionFieldMapper) {
-                        cqlType = COMPLETION_TYPE;
+                        colDesc.type = COMPLETION_TYPE;
                         buildCompletionType(ksName);
                     } else if (fieldMapper.getClass().getName().equals("org.elasticsearch.mapper.attachments.AttachmentMapper")) {
                         // attachement is a plugin, so class may not found.
-                        cqlType = ATTACHEMENT_TYPE;
+                        colDesc.type = ATTACHEMENT_TYPE;
                         buildAttachementType(ksName);
                     } else if (fieldMapper instanceof SourceFieldMapper) {
-                        cqlType = "blob";
+                        colDesc.type = "blob";
                     } else {
-                        cqlType = fieldMapper.cqlType();
-                        if (cqlType == null) {
+                        colDesc.type = fieldMapper.cqlType();
+                        if (colDesc.type == null) {
                             logger.warn("Ignoring field [{}] type [{}]", column, fieldMapper.name());
                             continue;
                         }
                     }
                     
-                    columnsMap.put(column, fieldMapper.cqlPartialUpdate());
                     if (fieldMapper.cqlPrimaryKeyOrder() >= 0) {
                         if (fieldMapper.cqlPrimaryKeyOrder() < primaryKeyList.length && primaryKeyList[fieldMapper.cqlPrimaryKeyOrder()] == null) {
-                            primaryKeyList[fieldMapper.cqlPrimaryKeyOrder()] = column;
+                        	primaryKeyList[fieldMapper.cqlPrimaryKeyOrder()] = colDesc;
+                        	colDesc.position = fieldMapper.cqlPrimaryKeyOrder();
                             primaryKeyLength = Math.max(primaryKeyLength, fieldMapper.cqlPrimaryKeyOrder()+1);
                             if (fieldMapper.cqlPartitionKey()) {
                                 partitionKeyLength++;
+                                colDesc.kind = Kind.PARTITION_KEY;
+                            } else {
+                            	colDesc.kind = Kind.CLUSTERING;
                             }
                         } else {
-                            throw new Exception("Wrong primary key order for column "+column);
+                            throw new ConfigurationException("Wrong primary key order for column "+column);
                         }
                     }
                     
-                    if (!isNativeCql3Type(cqlType)) {
-                        cqlType = "frozen<" + cqlType + ">";
+                    if (!isNativeCql3Type(colDesc.type)) {
+                        colDesc.type = "frozen<" + colDesc.type + ">";
                     }
                     if (!fieldMapper.cqlCollection().equals(CqlCollection.SINGLETON)) {
-                        cqlType = fieldMapper.cqlCollectionTag()+"<" + cqlType + ">";
+                        colDesc.type = fieldMapper.cqlCollectionTag()+"<" + colDesc.type + ">";
                     }
-                    isStatic = fieldMapper.cqlStaticColumn();
+                    if (fieldMapper.cqlStaticColumn())
+                        colDesc.kind = Kind.STATIC; 
                 } else {
                     ObjectMapper objectMapper = docMapper.objectMappers().get(column);
                     if (objectMapper == null) {
@@ -1252,141 +1273,149 @@ public class ClusterService extends BaseClusterService {
                         logger.warn("Ignoring enabled object with no sub-fields", column);
                         continue;
                     }
-                    columnsMap.put(column,  objectMapper.cqlPartialUpdate());
                     if (objectMapper.cqlPrimaryKeyOrder() >= 0) {
                         if (objectMapper.cqlPrimaryKeyOrder() < primaryKeyList.length && primaryKeyList[objectMapper.cqlPrimaryKeyOrder()] == null) {
-                            primaryKeyList[objectMapper.cqlPrimaryKeyOrder()] = column;
+                            primaryKeyList[objectMapper.cqlPrimaryKeyOrder()] = colDesc;
+                            colDesc.position = fieldMapper.cqlPrimaryKeyOrder();
                             primaryKeyLength = Math.max(primaryKeyLength, objectMapper.cqlPrimaryKeyOrder()+1);
                             if (objectMapper.cqlPartitionKey()) {
                                 partitionKeyLength++;
+                                colDesc.kind = Kind.PARTITION_KEY;
+                            } else {
+                            	colDesc.kind = Kind.CLUSTERING;
                             }
                         } else {
-                            throw new Exception("Wrong primary key order for column "+column);
+                            throw new ConfigurationException("Wrong primary key order for column "+column);
                         }
                     }
                     if (!objectMapper.isEnabled()) {
                         logger.debug("Object [{}] not enabled stored as text", column);
-                        cqlType = "text";
+                        colDesc.type = "text";
                     } else if (objectMapper.cqlStruct().equals(CqlStruct.MAP)) {
                         // TODO: check columnName exists and is map<text,?>
-                        cqlType = buildCql(ksName, cfName, column, objectMapper);
-                        if (cqlType == null) {
+                        colDesc.type = buildCql(ksName, cfName, column, objectMapper);
+                        if (colDesc.type == null) {
                             // no sub-field, ignore it #146
                             continue;
                         }
                         if (!objectMapper.cqlCollection().equals(CqlCollection.SINGLETON)) {
-                            cqlType = objectMapper.cqlCollectionTag()+"<"+cqlType+">";
+                            colDesc.type = objectMapper.cqlCollectionTag()+"<"+colDesc.type+">";
                         }
                         //logger.debug("Expecting column [{}] to be a map<text,?>", column);
                     } else  if (objectMapper.cqlStruct().equals(CqlStruct.UDT)) {
                         
                         if (!objectMapper.isEnabled()) {
-                            cqlType = "text";   // opaque json object stored as text
+                            colDesc.type = "text";   // opaque json object stored as text
                         } else {
                             String subType = buildCql(ksName, cfName, column, objectMapper);
                             if (subType == null) {
                                 continue;       // no sub-field, ignore it #146
                             }
-                            cqlType = "frozen<" + ColumnIdentifier.maybeQuote(subType) + ">";
+                            colDesc.type = "frozen<" + ColumnIdentifier.maybeQuote(subType) + ">";
                         }
                         if (!objectMapper.cqlCollection().equals(CqlCollection.SINGLETON) && !(cfName.equals(PERCOLATOR_TABLE) && column.equals("query"))) {
-                            cqlType = objectMapper.cqlCollectionTag()+"<"+cqlType+">";
+                            colDesc.type = objectMapper.cqlCollectionTag()+"<"+colDesc.type+">";
                         }
                     }
-                    isStatic = objectMapper.cqlStaticColumn();
+                    if (objectMapper.cqlStaticColumn())
+                        colDesc.kind = Kind.STATIC; 
                 }
+                columnsList.add(colDesc);
+            }
 
-                
-                if (newTable) {
-                    if (cqlType != null) {
-                        columnsList.append("\"").append(column).append("\" ").append(cqlType);
-                        if (isStatic) columnsList.append(" static");
+            // add _id if no PK 
+            if (partitionKeyLength == 0) {
+                ColumnDescriptor colDesc = new ColumnDescriptor(ELASTIC_ID_COLUMN_NAME, "text", Kind.PARTITION_KEY, 0);
+                columnsList.add(colDesc);
+                primaryKeyList[0] = colDesc;
+                primaryKeyLength = 1;
+                partitionKeyLength = 1;
+            }
+            
+            // add _parent column if necessary. Parent and child documents should have the same partition key.
+            if (docMapper.parentFieldMapper().active() && docMapper.parentFieldMapper().pkColumns() == null) {
+                columnsList.add(new ColumnDescriptor("_parent", "text"));
+            }
+            
+            if (!doApply) {
+                // check for CQL schema validity
+                for(int i=0; i < primaryKeyLength; i++) {
+                    if (primaryKeyList[i] == null)
+                        throw new IOException("Bad mapping, primary key column not defined at position "+i);
+                }
+                if (!newTable) {
+                    // check column properties matches existing ones
+                    for(ColumnDescriptor colDesc : columnsList) {
+                        ColumnDefinition cd = cfm.getColumnDefinition(new ColumnIdentifier(colDesc.name, true));
+                        // do not enforce PK constraints if not specified explicitly in oder to keep backward compatibility.
+                        if (cd != null && cd.kind != colDesc.kind && colDesc.kind != Kind.REGULAR)
+                            throw new IOException("Bad mapping, column ["+colDesc.name+"] type [" + colDesc.kind + "] does not match the existing one type [" + cd.kind + "]");
+                        // TODO: check for position
                     }
+                }
+                updateMapping(mapperService.index().getName(), mappingMd);
+            } else {
+                // apply CQL schema update
+                if (newTable) {
+                    StringBuilder primaryKey = new StringBuilder();
+                    primaryKey.append("(");
+                    for(int i=0; i < primaryKeyLength; i++) {
+                        primaryKey.append( ColumnIdentifier.maybeQuote(primaryKeyList[i].name) );
+                        if ( i == partitionKeyLength -1) 
+                            primaryKey.append(")");
+                        if (i+1 < primaryKeyLength )
+                            primaryKey.append(",");
+                    }
+                    StringBuilder columnsDefinitions = new StringBuilder();
+                    for(ColumnDescriptor colDesc : columnsList) {
+                        columnsDefinitions.append( ColumnIdentifier.maybeQuote(colDesc.name) ).append(" ").append(colDesc.type);
+                        if (colDesc.kind == Kind.STATIC)
+                            columnsDefinitions.append(" static");
+                        columnsDefinitions.append(",");
+                    }
+                    String query = String.format(Locale.ROOT, "CREATE TABLE IF NOT EXISTS \"%s\".\"%s\" ( %s PRIMARY KEY (%s) ) WITH COMMENT='Auto-created by Elassandra'",
+                            ksName, cfName, columnsDefinitions.toString(), primaryKey.toString());
+                    logger.debug(query);
+                    QueryProcessor.process(query, ConsistencyLevel.LOCAL_ONE);
                 } else {
-                    ColumnDefinition cdef = cfm.getColumnDefinition(new ColumnIdentifier(column, true));
-                    if (cqlType != null) {
+                    // update an existing table
+                    for(ColumnDescriptor colDesc : columnsList) {
+                        if (colDesc.kind.isPrimaryKeyKind() || colDesc.type == null)
+                            continue;
+
+                        ColumnDefinition cdef = cfm.getColumnDefinition(new ColumnIdentifier(colDesc.name, true));
                         if (cdef == null) {
-                            for(int i=0; i < primaryKeyLength; i++) {
-                                if (primaryKeyList[i] != null && primaryKeyList[i].equals(column))
-                                    throw new Exception("Cannot alter primary key of an existing table");
-                            }
                             try {
-                                String query = String.format(Locale.ROOT, "ALTER TABLE \"%s\".\"%s\" ADD \"%s\" %s %s", ksName, cfName, column, cqlType,(isStatic) ? "static":"");
+                                String query = String.format(Locale.ROOT, "ALTER TABLE \"%s\".\"%s\" ADD %s %s", ksName, cfName, ColumnIdentifier.maybeQuote(colDesc.name), colDesc.type);
                                 logger.debug(query);
                                 QueryProcessor.process(query, ConsistencyLevel.LOCAL_ONE);
-                            } catch (Exception e) {
-                                logger.warn("Failed to alter table {}.{} column [{}] with type [{}]", e, ksName, cfName, column, cqlType);
+                            } catch (org.apache.cassandra.exceptions.InvalidRequestException e) {
+                                logger.warn("Failed to ALTER TABLE {}.{} column {} {}", e, ksName, cfName, ColumnIdentifier.maybeQuote(colDesc.name), colDesc.type);
                             }
                         } else {
                             // check that the existing column matches the provided mapping
                             // TODO: do this check for collection
                             String existingCqlType = cdef.type.asCQL3Type().toString();
                             if (!cdef.type.isCollection()) {
-                                if (cqlType.equals("frozen<geo_point>")) {
+                                if (colDesc.type.equals("frozen<geo_point>")) {
                                     if (!(existingCqlType.equals("text") || existingCqlType.equals("frozen<geo_point>"))) {
-                                        throw new IOException("geo_point cannot be mapped to column ["+column+"] with CQL type ["+cqlType+"]. ");
+                                        throw new ConfigurationException("geo_point cannot be mapped to column ["+colDesc.name+"] with CQL type ["+colDesc.type+"]. ");
                                     }
                                 } else
                                     // cdef.type.asCQL3Type() does not include frozen, nor quote, so can do this check for collection.
-                                    if (!existingCqlType.equals(cqlType) &&
-                                        !cqlType.equals("frozen<"+existingCqlType+">") &&
-                                        !(existingCqlType.endsWith("uuid") && cqlType.equals("text")) && // #74 uuid is mapped as keyword
-                                        !(existingCqlType.equals("timeuuid") && (cqlType.equals("timestamp") || cqlType.equals("text"))) &&
-                                        !(existingCqlType.equals("date") && cqlType.equals("timestamp")) &&
-                                        !(existingCqlType.equals("time") && cqlType.equals("bigint"))
+                                    if (!existingCqlType.equals(colDesc.type) &&
+                                        !colDesc.type.equals("frozen<"+existingCqlType+">") &&
+                                        !(existingCqlType.endsWith("uuid") && colDesc.type.equals("text")) && // #74 uuid is mapped as keyword
+                                        !(existingCqlType.equals("timeuuid") && (colDesc.type.equals("timestamp") || colDesc.type.equals("text"))) &&
+                                        !(existingCqlType.equals("date") && colDesc.type.equals("timestamp")) &&
+                                        !(existingCqlType.equals("time") && colDesc.type.equals("bigint"))
                                         ) // timeuuid can be mapped to date
-                                    throw new IOException("Existing column ["+column+"] type ["+existingCqlType+"] mismatch with inferred type ["+cqlType+"]");
+                                    throw new ConfigurationException("Existing column ["+colDesc.name+"] type ["+existingCqlType+"] mismatch with inferred type ["+colDesc.type+"]");
                             }
                         }
                     }
                 }
-              
             }
-
-            // add _parent column if necessary. Parent and child documents should have the same partition key.
-            if (docMapper.parentFieldMapper().active() && docMapper.parentFieldMapper().pkColumns() == null) {
-                if (newTable) {
-                    // _parent is a JSON array representation of the parent PK.
-                    if (columnsList.length() > 0)
-                        columnsList.append(", ");
-                    columnsList.append("\"_parent\" text");
-                } else {
-                    try {
-                        String query = String.format(Locale.ROOT, "ALTER TABLE \"%s\".\"%s\" ADD \"_parent\" text", ksName, cfName);
-                        logger.debug(query);
-                        QueryProcessor.process(query, ConsistencyLevel.LOCAL_ONE);
-                    } catch (org.apache.cassandra.exceptions.InvalidRequestException e) {
-                        logger.warn("Cannot alter table {}.{} column _parent with type text", e, ksName, cfName);
-                    }
-                }
-            }
-            
-            if (newTable) {
-                if (partitionKeyLength == 0) {
-                    // build a default primary key _id text
-                    if (columnsList.length() > 0) columnsList.append(',');
-                    columnsList.append("\"").append(ELASTIC_ID_COLUMN_NAME).append("\" text");
-                    primaryKeyList[0] = ELASTIC_ID_COLUMN_NAME;
-                    primaryKeyLength = 1;
-                    partitionKeyLength = 1;
-                }
-                // build the primary key definition
-                StringBuilder primaryKey = new StringBuilder();
-                primaryKey.append("(");
-                for(int i=0; i < primaryKeyLength; i++) {
-                    if (primaryKeyList[i] == null) throw new Exception("Incomplet primary key definition at index "+i);
-                    primaryKey.append("\"").append( primaryKeyList[i] ).append("\"");
-                    if ( i == partitionKeyLength -1) primaryKey.append(")");
-                    if (i+1 < primaryKeyLength )   primaryKey.append(",");
-                }
-                String query = String.format(Locale.ROOT, "CREATE TABLE IF NOT EXISTS \"%s\".\"%s\" ( %s, PRIMARY KEY (%s) ) WITH COMMENT='Auto-created by Elassandra'",
-                        ksName, cfName, columnsList.toString(), primaryKey.toString());
-                logger.debug(query);
-                QueryProcessor.process(query, ConsistencyLevel.LOCAL_ONE);
-            }
-            
-            updateMapping(mapperService.index().getName(), mappingMd);
-            
         } catch (Throwable e) {
             throw new IOException(e.getMessage(), e);
         }

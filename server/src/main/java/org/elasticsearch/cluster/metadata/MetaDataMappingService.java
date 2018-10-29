@@ -111,7 +111,7 @@ public class MetaDataMappingService extends AbstractComponent {
         @Override
         public ClusterTasksResult<RefreshTask> execute(ClusterState currentState, List<RefreshTask> tasks) throws Exception {
             ClusterState newClusterState = executeRefresh(currentState, tasks);
-            return ClusterTasksResult.<RefreshTask>builder().successes(tasks).build(newClusterState, true);
+            return ClusterTasksResult.<RefreshTask>builder().successes(tasks).build(newClusterState, true, true);
         }
     }
 
@@ -119,7 +119,7 @@ public class MetaDataMappingService extends AbstractComponent {
         @Override
         public ClusterTasksResult<UpdateTask> execute(ClusterState currentState, List<UpdateTask> tasks) throws Exception {
             ClusterState newClusterState = executeRefresh(currentState, tasks);
-            return ClusterTasksResult.<UpdateTask>builder().successes(tasks).build(newClusterState, true);
+            return ClusterTasksResult.<UpdateTask>builder().successes(tasks).build(newClusterState, true, true);
         }
     }
 
@@ -177,7 +177,7 @@ public class MetaDataMappingService extends AbstractComponent {
                     // don't apply the default mapping, it has been applied when the mapping was created
                     DocumentMapper docMapper = indexService.mapperService().merge(metaData.value.type(), metaData.value.source(), MapperService.MergeReason.MAPPING_RECOVERY, true);
                     if (!metaData.value.type().equals(MapperService.DEFAULT_MAPPING)) {
-                        clusterService.updateTableSchema(indexService.mapperService(), metaData.value);
+                        clusterService.updateTableSchema(indexService.mapperService(), metaData.value, false);
                     }
                 }
             }
@@ -223,7 +223,7 @@ public class MetaDataMappingService extends AbstractComponent {
                     builder.putMapping(mappingMetaData2);
                     
                     if (!mappingMetaData2.type().equals(MapperService.DEFAULT_MAPPING)) {
-                        clusterService.updateTableSchema(indexService.mapperService(), mappingMetaData2);
+                        clusterService.updateTableSchema(indexService.mapperService(), mappingMetaData2, false);
                     }
                 }
             }
@@ -240,7 +240,7 @@ public class MetaDataMappingService extends AbstractComponent {
         final RefreshTask refreshTask = new RefreshTask(index, indexUUID);
         clusterService.submitStateUpdateTask("refresh-mapping",
             refreshTask,
-            ClusterStateTaskConfig.build(Priority.HIGH, true),
+            ClusterStateTaskConfig.build(Priority.HIGH, null, true),
             refreshExecutor,
                 (source, e) -> logger.warn((Supplier<?>) () -> new ParameterizedMessage("failure during [{}]", source), e)
         );
@@ -270,7 +270,7 @@ public class MetaDataMappingService extends AbstractComponent {
                         builder.failure(request, e);
                     }
                 }
-                return builder.build(currentState, true);
+                return builder.build(currentState, true, true);
             } finally {
                 IOUtils.close(indexMapperServices.values());
             }
@@ -385,7 +385,7 @@ public class MetaDataMappingService extends AbstractComponent {
                     
                     // update CQL schema.
                     if (mappingMd.type().equals(mappingType) && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                        clusterService.updateTableSchema(mapperService, mappingMd);
+                        clusterService.updateTableSchema(mapperService, mappingMd, false);
                     }
                 }
                 builder.put(indexMetaDataBuilder);
@@ -411,7 +411,7 @@ public class MetaDataMappingService extends AbstractComponent {
         final UpdateTask updateTask = new UpdateTask(index, indexUUID, type, mappingSource, nodeId, listener);
         clusterService.submitStateUpdateTask("update-mapping [" + index + "]",
                 updateTask,
-                ClusterStateTaskConfig.build(Priority.HIGH, true),
+                ClusterStateTaskConfig.build(Priority.HIGH, timeout, true),
             updateExecutor,
             listener);
     }
@@ -419,7 +419,7 @@ public class MetaDataMappingService extends AbstractComponent {
     public void putMapping(final PutMappingClusterStateUpdateRequest request, final ActionListener<ClusterStateUpdateResponse> listener) {
         clusterService.submitStateUpdateTask("put-mapping",
                 request,
-                ClusterStateTaskConfig.build(Priority.HIGH, request.masterNodeTimeout()),
+                ClusterStateTaskConfig.build(Priority.HIGH, request.masterNodeTimeout(), true),
                 putMappingExecutor,
                 new AckedClusterStateTaskListener() {
 

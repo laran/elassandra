@@ -19,6 +19,8 @@
 
 package org.elasticsearch.indices.cluster;
 
+import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
+
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.logging.log4j.util.Supplier;
@@ -33,6 +35,7 @@ import org.elasticsearch.cluster.ClusterStateApplier;
 import org.elasticsearch.cluster.action.index.NodeMappingRefreshAction;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
+import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.cluster.metadata.IndexMetaData.State;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.DiscoveryNodes;
@@ -58,6 +61,7 @@ import org.elasticsearch.index.Index;
 import org.elasticsearch.index.IndexComponent;
 import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.IndexSettings;
+import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.index.seqno.GlobalCheckpointTracker;
 import org.elasticsearch.index.shard.IndexEventListener;
 import org.elasticsearch.index.shard.IndexShard;
@@ -302,7 +306,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
 
         for (AllocatedIndex<? extends Shard> indexService : indicesService) {
             Index index = indexService.index();
-            if (state.metaData().index(index).getState() == State.CLOSE) {
+            if (state.metaData().index(index) == null || state.metaData().index(index).getState() == State.CLOSE) {
                 final AllocatedIndices.IndexRemovalReason reason = CLOSED;
                 logger.debug("{} removing index, [{}]", index, reason);
                 indicesService.removeIndex(index, reason, "removing index (no shards allocated)");
@@ -362,6 +366,23 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 try {
                     indexService = indicesService.createIndex(indexMetaData, buildInIndexListener);
                     indexService.updateMapping(indexMetaData);
+
+                    if (event.updateCqlSchema()) {
+                        // update CQL schema
+                        for (ObjectObjectCursor<String,MappingMetaData> cursor : indexMetaData.getMappings()) {
+                            MappingMetaData mappingMd = cursor.value;
+                            if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
+                                try {
+                                    clusterService.updateTableSchema(indexService.mapperService(), mappingMd, true);
+                                } catch (IOException e) {
+                                    if (logger.isWarnEnabled()) {
+                                        logger.warn("[{}][{}] failed to update CQL schema", indexMetaData.getIndex(),  indexMetaData.getIndexUUID(), e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                 } catch (Throwable e) {
                     if (logger.isWarnEnabled()) {
                         logger.warn("[{}][{}] failed to create index", indexMetaData.getIndex(),  indexMetaData.getIndexUUID(), e);
@@ -417,6 +438,22 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 indexService.updateMetaData(newIndexMetaData);
                 try {
                     indexService.updateMapping(newIndexMetaData);
+
+                    if (event.updateCqlSchema()) {
+                        // the coordinator updates CQL schema
+                        for (ObjectObjectCursor<String,MappingMetaData> cursor : newIndexMetaData.getMappings()) {
+                            MappingMetaData mappingMd = cursor.value;
+                            if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
+                                try {
+                                    clusterService.updateTableSchema(indexService.mapperService(), mappingMd, true);
+                                } catch (IOException e) {
+                                    if (logger.isWarnEnabled()) {
+                                        logger.warn("[{}][{}] failed to update CQL schema", newIndexMetaData.getIndex(),  newIndexMetaData.getIndexUUID(), e);
+                                    }
+                                }
+                            }
+                        }
+                    }
                 } catch (Exception e) {
                     indicesService.removeIndex(indexService.index(), FAILURE, "removing index (mapping update failed)");
                 }
@@ -656,6 +693,8 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
          * Checks if index requires refresh from master.
          */
         boolean updateMapping(IndexMetaData indexMetaData) throws IOException;
+
+        public MapperService mapperService();
 
         /**
          * Returns shard with given id.
