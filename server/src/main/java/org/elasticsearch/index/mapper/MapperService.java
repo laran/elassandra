@@ -44,12 +44,13 @@ import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.lucene.analysis.Analyzer;
 import org.apache.lucene.analysis.DelegatingAnalyzerWrapper;
 import org.apache.lucene.index.Term;
+import org.elassandra.cluster.QueryManager;
+import org.elassandra.cluster.SchemaManager;
 import org.elassandra.index.ElasticSecondaryIndex;
 import org.elasticsearch.ElasticsearchGenerationException;
 import org.elasticsearch.Version;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.MappingMetaData;
-import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.compress.CompressedXContent;
 import org.elasticsearch.common.logging.DeprecationLogger;
@@ -205,7 +206,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
     private void buildNativeOrUdtMapping(Map<String, Object> mapping, final AbstractType<?> type) throws IOException {
         CQL3Type cql3type = type.asCQL3Type();
         if (cql3type instanceof CQL3Type.Native) {
-            String esType = ClusterService.cqlMapping.get(cql3type.toString());
+            String esType = SchemaManager.cqlMapping.get(cql3type.toString());
             if (esType != null) {
                 mapping.put("type", esType);
             } else {
@@ -261,7 +262,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
     
     public Map<String, Object> discoverTableMapping(final String type, Map<String, Object> mapping) throws IOException, SyntaxException, ConfigurationException {
         final String columnRegexp = (String)mapping.get(DISCOVER);
-        final String cfName = ClusterService.typeToCfName(keyspace(), type);
+        final String cfName = SchemaManager.typeToCfName(keyspace(), type);
         if (columnRegexp != null) {
             mapping.remove(DISCOVER);
             Pattern pattern =  Pattern.compile(columnRegexp);
@@ -272,7 +273,7 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
             }
             String ksName = keyspace();
             try {
-                CFMetaData metadata = ClusterService.getCFMetaData(ksName, cfName);
+                CFMetaData metadata = SchemaManager.getCFMetaData(ksName, cfName);
                 List<String> pkColNames = new ArrayList<String>(metadata.partitionKeyColumns().size() + metadata.clusteringColumns().size());
                 for(ColumnDefinition cd: Iterables.concat(metadata.partitionKeyColumns(), metadata.clusteringColumns())) {
                     pkColNames.add(cd.name.toString());

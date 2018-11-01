@@ -25,6 +25,7 @@ import com.google.common.collect.Multimap;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
+import org.elassandra.cluster.SchemaManager;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexClusterStateUpdateRequest;
 import org.elasticsearch.cluster.AckedClusterStateUpdateTask;
@@ -84,7 +85,7 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
             public boolean doPresistMetaData() {
                 return true;
             }
-            
+
             @Override
             public ClusterState execute(final ClusterState currentState) {
                 return deleteIndices(currentState, Sets.newHashSet(request.indices()));
@@ -113,12 +114,12 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
             //routingTableBuilder.remove(indexName);
             clusterBlocksBuilder.removeIndexBlocks(indexName);
             metaDataBuilder.remove(indexName);
-            
+
             final IndexMetaData indexMetaData = currentState.metaData().index(index);
-            // record keyspace.table having useless 2i 
-            for(ObjectCursor<MappingMetaData> type:indexMetaData.getMappings().values()) 
+            // record keyspace.table having useless 2i
+            for(ObjectCursor<MappingMetaData> type:indexMetaData.getMappings().values())
                 if (!MapperService.DEFAULT_MAPPING.equals(type.value.type()))
-                    unindexedTables.put(indexMetaData, ClusterService.typeToCfName(indexMetaData.keyspace(), type.value.type()));
+                    unindexedTables.put(indexMetaData, SchemaManager.typeToCfName(indexMetaData.keyspace(), type.value.type()));
         }
         // add tombstones to the cluster state for each deleted index
         final IndexGraveyard currentGraveyard = graveyardBuilder.addTombstones(indices).build(settings);
@@ -131,10 +132,10 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
 
      // remove keyspace.table still having ES indices from the unindexedTables
         for(ObjectCursor<IndexMetaData> index:newMetaData.indices().values()) {
-            for(ObjectCursor<MappingMetaData> type:index.value.getMappings().values()) 
+            for(ObjectCursor<MappingMetaData> type:index.value.getMappings().values())
                 unindexedTables.remove(index.value.keyspace(), type.value);
         }
-        
+
         logger.debug("unindexed tables={}", unindexedTables);
         boolean clusterDropOnDelete = currentState.metaData().settings().getAsBoolean(ClusterService.SETTING_CLUSTER_DROP_ON_DELETE_INDEX, Boolean.getBoolean("es.drop_on_delete_index"));
         for(IndexMetaData imd : unindexedTables.keySet()) {
@@ -149,23 +150,23 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
                     if (tableCount == unindexedTables.get(imd).size()) {
                         // drop keyspace instead of droping all tables.
                         try {
-                            MetaDataDeleteIndexService.this.clusterService.dropIndexKeyspace(imd.keyspace());
+                            MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropIndexKeyspace(imd.keyspace());
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
                     } else {
                         // drop tables
                         for(String table : unindexedTables.get(imd))
-                            MetaDataDeleteIndexService.this.clusterService.dropTable(imd.keyspace(), table);
+                            MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropTable(imd.keyspace(), table);
                     }
                 } else {
                     // drop secondary indices
                     for(String table : unindexedTables.get(imd))
-                        MetaDataDeleteIndexService.this.clusterService.dropSecondaryIndex(imd.keyspace(), table);
+                        MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropSecondaryIndex(imd.keyspace(), table);
                 }
             }
         }
-        
+
         // update snapshot restore entries
         ImmutableOpenMap<String, ClusterState.Custom> customs = currentState.getCustoms();
         /*
@@ -190,6 +191,6 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
         */
         RoutingTable newRoutingTable = RoutingTable.build(this.clusterService, ClusterState.builder(currentState).metaData(newMetaData).blocks(blocks).customs(customs).build());
         return ClusterState.builder(currentState).metaData(newMetaData).blocks(blocks).routingTable(newRoutingTable).customs(customs).build();
-        
+
     }
 }

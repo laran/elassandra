@@ -27,8 +27,8 @@ import org.apache.lucene.index.Term;
 import org.apache.lucene.search.DocValuesFieldExistsQuery;
 import org.apache.lucene.search.Query;
 import org.apache.lucene.search.TermQuery;
+import org.elassandra.cluster.SchemaManager;
 import org.elasticsearch.ElasticsearchParseException;
-import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.Explicit;
 import org.elasticsearch.common.geo.GeoPoint;
 import org.elasticsearch.common.geo.GeoUtils;
@@ -176,7 +176,7 @@ public class GeoPointFieldMapper extends FieldMapper implements ArrayValueMapper
         
         @Override
         public String cqlType() {
-            return ClusterService.GEO_POINT_TYPE;
+            return SchemaManager.GEO_POINT_TYPE;
         }
 
         @Override

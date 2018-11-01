@@ -845,7 +845,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
 
     public Engine.DeleteResult applyDeleteOperationOnPrimary(long version, String type, String id, VersionType versionType,
                                                              Consumer<Mapping> onMappingUpdate, @Nullable ConsistencyLevel cl) throws IOException {
-        clusterService.deleteRow(indexService(), type, id, cl == null ? ConsistencyLevel.LOCAL_ONE : cl);
+        clusterService.getQueryManager().deleteRow(indexService(), type, id, cl == null ? ConsistencyLevel.LOCAL_ONE : cl);
         return new Engine.DeleteResult(1L, SequenceNumbers.UNASSIGNED_SEQ_NO, true);
     }
 
@@ -930,7 +930,7 @@ public class IndexShard extends AbstractIndexShardComponent implements IndicesCl
     
     public Engine.GetResult get(String type, String id) throws IOException {
         readAllowed();
-        return clusterService.fetchSourceInternal(this.indexService, type, id, this.mapperService.documentMapper(type).getColumnDefinitions(), (timeElapsed) -> refreshMetric.inc(timeElapsed));
+        return clusterService.getQueryManager().fetchSourceInternal(this.indexService, type, id, this.mapperService.documentMapper(type).getColumnDefinitions(), (timeElapsed) -> refreshMetric.inc(timeElapsed));
     }
     
     /**

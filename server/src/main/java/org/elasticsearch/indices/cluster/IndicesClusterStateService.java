@@ -35,8 +35,8 @@ import org.elasticsearch.cluster.ClusterStateApplier;
 import org.elasticsearch.cluster.action.index.NodeMappingRefreshAction;
 import org.elasticsearch.cluster.action.shard.ShardStateAction;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
-import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.cluster.metadata.IndexMetaData.State;
+import org.elasticsearch.cluster.metadata.MappingMetaData;
 import org.elasticsearch.cluster.node.DiscoveryNode;
 import org.elasticsearch.cluster.node.DiscoveryNodes;
 import org.elasticsearch.cluster.routing.IndexRoutingTable;
@@ -71,11 +71,9 @@ import org.elasticsearch.index.shard.PrimaryReplicaSyncer.ResyncTask;
 import org.elasticsearch.index.shard.ShardId;
 import org.elasticsearch.index.shard.ShardNotFoundException;
 import org.elasticsearch.indices.IndicesService;
-import org.elasticsearch.indices.flush.SyncedFlushService;
 import org.elasticsearch.indices.recovery.PeerRecoveryTargetService;
 import org.elasticsearch.indices.recovery.RecoveryFailedException;
 import org.elasticsearch.indices.recovery.RecoveryState;
-import org.elasticsearch.repositories.RepositoriesService;
 import org.elasticsearch.search.SearchService;
 import org.elasticsearch.threadpool.ThreadPool;
 
@@ -91,7 +89,6 @@ import java.util.function.Consumer;
 import static org.elasticsearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.CLOSED;
 import static org.elasticsearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.DELETED;
 import static org.elasticsearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.FAILURE;
-import static org.elasticsearch.indices.cluster.IndicesClusterStateService.AllocatedIndices.IndexRemovalReason.NO_LONGER_ASSIGNED;
 
 public class IndicesClusterStateService extends AbstractLifecycleComponent implements ClusterStateApplier {
 
@@ -222,7 +219,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
 
         //createIndices(state);
         applyNewIndices(event);
-        
+
         createOrUpdateShards(state);
     }
 
@@ -313,7 +310,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             }
         }
     }
-    
+
     /**
      * Removes shards that are currently loaded by indicesService but have disappeared from the routing table of the current node.
      * This method does not delete the shard data.
@@ -352,7 +349,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
     }
 
     /**
-     * In Elassandra, new index creation involve a new INITIALIZING shardRouting attached to the index and recovered. 
+     * In Elassandra, new index creation involve a new INITIALIZING shardRouting attached to the index and recovered.
      * @param event
      */
     private void applyNewIndices(final ClusterChangedEvent event) {
@@ -373,7 +370,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                             MappingMetaData mappingMd = cursor.value;
                             if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
                                 try {
-                                    clusterService.updateTableSchema(indexService.mapperService(), mappingMd, true);
+                                    clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, true);
                                 } catch (IOException e) {
                                     if (logger.isWarnEnabled()) {
                                         logger.warn("[{}][{}] failed to update CQL schema", indexMetaData.getIndex(),  indexMetaData.getIndexUUID(), e);
@@ -389,23 +386,23 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                     }
                 }
             }
-            
+
             DiscoveryNodes nodes = event.state().nodes();
             RoutingTable routingTable = event.state().routingTable();
-            
+
             if (indexService != null && indexService.getShardOrNull(0) == null && indexMetaData.getState() == State.OPEN) {
                 try {
                     if (logger.isDebugEnabled()) {
                         logger.debug("[{}][{}] creating new shard INITIALIZING", indexMetaData.getIndex(), 0);
                     }
-                    ShardRouting shardRouting = new ShardRouting(new ShardId(indexMetaData.getIndex(), 0), clusterService.localNode().getId(), null, true, 
-                            ShardRoutingState.INITIALIZING, 
+                    ShardRouting shardRouting = new ShardRouting(new ShardId(indexMetaData.getIndex(), 0), clusterService.localNode().getId(), null, true,
+                            ShardRoutingState.INITIALIZING,
                             RecoverySource.StoreRecoverySource.EMPTY_STORE_INSTANCE,
-                            IndexRoutingTable.UNASSIGNED_INFO_INDEX_CREATED, 
+                            IndexRoutingTable.UNASSIGNED_INFO_INDEX_CREATED,
                             ShardRouting.DUMMY_ALLOCATION_ID, 0,
                             AbstractSearchStrategy.EMPTY_RANGE_TOKEN_LIST);
                     createShard(nodes, routingTable, shardRouting, state);
-                    
+
                     //IndexShard indexShard = indexService.createShard(shardRouting);
                     //indexShard.shardRouting(shardRouting);
                     //indexShard.addFailedEngineListener(failedEngineHandler);
@@ -423,7 +420,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
             }
         }
     }
-    
+
     private void updateIndices(ClusterChangedEvent event) {
         if (!event.metaDataChanged()) {
             return;
@@ -445,7 +442,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                             MappingMetaData mappingMd = cursor.value;
                             if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
                                 try {
-                                    clusterService.updateTableSchema(indexService.mapperService(), mappingMd, true);
+                                    clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, true);
                                 } catch (IOException e) {
                                     if (logger.isWarnEnabled()) {
                                         logger.warn("[{}][{}] failed to update CQL schema", newIndexMetaData.getIndex(),  newIndexMetaData.getIndexUUID(), e);
@@ -577,7 +574,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         @Override
         public void onRecoveryDone(RecoveryState state) {
             logger.info("shard [{}][{}] recovered source=[{}] ", state.getShardId().getIndexName(), state.getShardId().getId() ,state.getRecoverySource());
-            
+
             // add for elassandra
             try {
                IndexService indexService = clusterService.indexServiceSafe(shardRouting.shardId().getIndex());
@@ -641,7 +638,7 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
         ShardRouting routingEntry();
 
         void moveToStart();
-        
+
         /**
          * Returns the latest internal shard state.
          */
