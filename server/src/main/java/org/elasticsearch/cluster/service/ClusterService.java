@@ -230,6 +230,11 @@ public class ClusterService extends BaseClusterService {
      */
     public static final String INDEX_INSERT_ONLY = "index_insert_only";
 
+    /**
+     * Basically stores and index _source in a column
+     */
+    public static final String INDEX_OPAQUE_STORAGE = "index_opaque_storage";
+
     // system property settings
     public static final String SETTING_SYSTEM_MAPPING_UPDATE_TIMEOUT = SYSTEM_PREFIX+MAPPING_UPDATE_TIMEOUT;
     public static final String SETTING_SYSTEM_SECONDARY_INDEX_CLASS = SYSTEM_PREFIX+SECONDARY_INDEX_CLASS;
@@ -243,6 +248,9 @@ public class ClusterService extends BaseClusterService {
     public static final String SETTING_SYSTEM_TOKEN_PRECISION_STEP = SYSTEM_PREFIX+TOKEN_PRECISION_STEP;
     public static final String SETTING_SYSTEM_TOKEN_RANGES_BITSET_CACHE = SYSTEM_PREFIX+TOKEN_RANGES_BITSET_CACHE;
     public static final String SETTING_SYSTEM_TOKEN_RANGES_QUERY_EXPIRE = SYSTEM_PREFIX+TOKEN_RANGES_QUERY_EXPIRE;
+    public static final String SETTING_SYSTEM_INDEX_INSERT_ONLY = SYSTEM_PREFIX+INDEX_INSERT_ONLY;
+    public static final String SETTING_SYSTEM_INDEX_OPAQUE_STORAGE = SYSTEM_PREFIX+INDEX_OPAQUE_STORAGE;
+
     public static final String SETTING_CLUSTER_INCLUDE_NODE_ID = CLUSTER_PREFIX+INCLUDE_NODE_ID;
 
     // elassandra cluster settings

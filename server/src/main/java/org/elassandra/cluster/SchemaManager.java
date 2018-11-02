@@ -276,10 +276,14 @@ public class SchemaManager extends AbstractComponent {
             Map<String, Object> mappingMap = mappingMd.sourceAsMap();
 
             Set<String> columns = new HashSet();
-            if (docMapper.sourceMapper().enabled())
+            if (mapperService.getIndexSettings().getIndexMetaData().isOpaqueStorage()) {
                 columns.add(SourceFieldMapper.NAME);
-            if (mappingMap.get("properties") != null)
-                columns.addAll( ((Map<String, Object>)mappingMap.get("properties")).keySet() );
+            } else {
+                if (docMapper.sourceMapper().enabled())
+                    columns.add(SourceFieldMapper.NAME);
+                if (mappingMap.get("properties") != null)
+                    columns.addAll(((Map<String, Object>) mappingMap.get("properties")).keySet());
+            }
 
             logger.debug("Updating CQL3 schema {}.{} apply={} columns={}", ksName, cfName, doApply, columns);
             List<ColumnDescriptor> columnsList = new ArrayList<>();

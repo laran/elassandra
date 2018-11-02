@@ -393,7 +393,11 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
     public static final String SETTING_INDEX_APPEND_ONLY = INDEX_SETTING_PREFIX+ClusterService.INDEX_INSERT_ONLY; 
     public static final Setting<Boolean> INDEX_INDEX_INSERT_ONLY_SETTING =
             Setting.boolSetting(SETTING_INDEX_APPEND_ONLY, false, Property.Dynamic, Property.IndexScope);
-    
+
+    public static final String SETTING_INDEX_OPAQUE_STORAGE = INDEX_SETTING_PREFIX+ClusterService.INDEX_OPAQUE_STORAGE;
+    public static final Setting<Boolean> INDEX_INDEX_OPAQUE_STORAGE_SETTING =
+            Setting.boolSetting(SETTING_INDEX_OPAQUE_STORAGE, false, Property.Final, Property.IndexScope);
+
     // hard-coded hash function as of 2.0
     // older indices will read which hash function to use in their index settings
     //private static final HashFunction MURMUR3_HASH_FUNCTION = new Murmur3HashFunction();
@@ -571,7 +575,14 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
         return settings;
     }
 
-    
+    public boolean isInsertOnly() {
+        return getSettings().getAsBoolean(IndexMetaData.SETTING_INDEX_APPEND_ONLY, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_INDEX_INSERT_ONLY));
+    }
+
+    public boolean isOpaqueStorage() {
+        return getSettings().getAsBoolean(IndexMetaData.SETTING_INDEX_OPAQUE_STORAGE, Boolean.getBoolean(ClusterService.SETTING_SYSTEM_INDEX_OPAQUE_STORAGE));
+    }
+
     public String keyspace() {
         return getSettings().get(IndexMetaData.SETTING_KEYSPACE, index.getName());
     }

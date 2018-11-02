@@ -20,7 +20,6 @@
 package org.elassandra.cluster;
 
 import com.google.common.collect.ImmutableList;
-
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
 import org.apache.cassandra.cql3.CQL3Type;
@@ -29,14 +28,7 @@ import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.db.CBuilder;
 import org.apache.cassandra.db.ConsistencyLevel;
-import org.apache.cassandra.db.marshal.AbstractType;
-import org.apache.cassandra.db.marshal.BytesType;
-import org.apache.cassandra.db.marshal.CollectionType;
-import org.apache.cassandra.db.marshal.ListType;
-import org.apache.cassandra.db.marshal.MapType;
-import org.apache.cassandra.db.marshal.SetType;
-import org.apache.cassandra.db.marshal.UTF8Type;
-import org.apache.cassandra.db.marshal.UserType;
+import org.apache.cassandra.db.marshal.*;
 import org.apache.cassandra.dht.Token;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.InvalidRequestException;
@@ -72,39 +64,14 @@ import org.elasticsearch.index.IndexService;
 import org.elasticsearch.index.engine.Engine;
 import org.elasticsearch.index.engine.VersionConflictEngineException;
 import org.elasticsearch.index.get.GetField;
-import org.elasticsearch.index.mapper.DateFieldMapper;
-import org.elasticsearch.index.mapper.DocumentFieldMappers;
-import org.elasticsearch.index.mapper.DocumentMapper;
-import org.elasticsearch.index.mapper.DocumentMapperForType;
-import org.elasticsearch.index.mapper.FieldMapper;
-import org.elasticsearch.index.mapper.IdFieldMapper;
-import org.elasticsearch.index.mapper.MappedFieldType;
-import org.elasticsearch.index.mapper.Mapper;
+import org.elasticsearch.index.mapper.*;
 import org.elasticsearch.index.mapper.Mapper.CqlCollection;
-import org.elasticsearch.index.mapper.MapperException;
-import org.elasticsearch.index.mapper.MapperParsingException;
-import org.elasticsearch.index.mapper.Mapping;
-import org.elasticsearch.index.mapper.MetadataFieldMapper;
-import org.elasticsearch.index.mapper.ObjectMapper;
-import org.elasticsearch.index.mapper.ParentFieldMapper;
-import org.elasticsearch.index.mapper.ParsedDocument;
-import org.elasticsearch.index.mapper.RoutingFieldMapper;
-import org.elasticsearch.index.mapper.SourceFieldMapper;
-import org.elasticsearch.index.mapper.SourceToParse;
-import org.elasticsearch.index.mapper.Uid;
 import org.elasticsearch.index.shard.IndexShard;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.function.LongConsumer;
 
 public class QueryManager extends AbstractComponent {
@@ -244,7 +211,7 @@ public class QueryManager extends AbstractComponent {
 
 
     public BytesReference source(IndexService indexService, DocumentMapper docMapper, Map sourceAsMap, Uid uid) throws JsonParseException, JsonMappingException, IOException {
-        if (docMapper.sourceMapper().enabled()) {
+        if (docMapper.sourceMapper().enabled()  || indexService.getMetaData().isOpaqueStorage()) {
             // retreive from _source columns stored as blob in cassandra if available.
             ByteBuffer bb = (ByteBuffer) sourceAsMap.get(SourceFieldMapper.NAME);
             if (bb != null)
@@ -723,7 +690,8 @@ public class QueryManager extends AbstractComponent {
             mappingUpdate = docMapper.mapping();
         }
 
-        if (mappingUpdate != null && indexService.mapperService().dynamic()) {
+        final boolean dynamicMappingEnable = indexService.mapperService().dynamic();
+        if (mappingUpdate != null && dynamicMappingEnable) {
             doc.addDynamicMappingsUpdate(mappingUpdate);
             if (logger.isDebugEnabled())
                 logger.debug("Document source={} require a blocking mapping update of [{}] mapping={}",
@@ -749,90 +717,95 @@ public class QueryManager extends AbstractComponent {
 
         String id = request.id();
         Map<String, ByteBuffer> map = new HashMap<String, ByteBuffer>();
-        if (request.parent() != null)
-            sourceMap.put(ParentFieldMapper.NAME, request.parent());
+        if (indexMetaData.isOpaqueStorage()) {
+            map.put(IdFieldMapper.NAME, Serializer.serialize(request.index(), cfName, metadata.getColumnDefinition(docMapper.idFieldMapper().cqlName()).type, IdFieldMapper.NAME, id, docMapper.idFieldMapper()));
+            map.put(SourceFieldMapper.NAME, Serializer.serialize(request.index(), cfName, metadata.getColumnDefinition(docMapper.sourceMapper().cqlName()).type, SourceFieldMapper.NAME, request.source(), docMapper.sourceMapper()));
+        } else {
+            if (request.parent() != null)
+                sourceMap.put(ParentFieldMapper.NAME, request.parent());
 
-        // normalize the _id and may find some column value in _id.
-        // if the provided columns does not contains all the primary key columns, parse the _id to populate the columns in map.
-        final Map<String, Object> idMap = new HashMap<>();
-        this.parseElasticId(indexService, cfName, request.id(), idMap);
-        sourceMap.putAll(idMap);
+            // normalize the _id and may find some column value in _id.
+            // if the provided columns does not contains all the primary key columns, parse the _id to populate the columns in map.
+            final Map<String, Object> idMap = new HashMap<>();
+            this.parseElasticId(indexService, cfName, request.id(), idMap);
+            sourceMap.putAll(idMap);
 
-        // workaround because ParentFieldMapper.value() and UidFieldMapper.value() create an Uid.
-        if (sourceMap.get(ParentFieldMapper.NAME) != null && ((String)sourceMap.get(ParentFieldMapper.NAME)).indexOf(Uid.DELIMITER) < 0) {
-            sourceMap.put(ParentFieldMapper.NAME, request.type() + Uid.DELIMITER + sourceMap.get(ParentFieldMapper.NAME));
-        }
-
-        if (docMapper.sourceMapper().enabled()) {
-            sourceMap.put(SourceFieldMapper.NAME, request.source());
-        }
-
-        for (String field : sourceMap.keySet()) {
-            FieldMapper fieldMapper = field.startsWith(ParentFieldMapper.NAME) ? // workaround for _parent#<join_type>
-                    docMapper.parentFieldMapper() : fieldMappers.getMapper( field );
-            Mapper mapper = (fieldMapper != null) ? fieldMapper : objectMappers.get(field);
-            ByteBuffer colName;
-            if (mapper == null) {
-                if (indexService.mapperService().dynamic() && !idMap.containsKey(field))
-                    throw new MapperException("Unmapped field ["+field+"]");
-                colName = ByteBufferUtil.bytes(field);
-            } else {
-                colName = mapper.cqlName();    // cached ByteBuffer column name.
+            // workaround because ParentFieldMapper.value() and UidFieldMapper.value() create an Uid.
+            if (sourceMap.get(ParentFieldMapper.NAME) != null && ((String) sourceMap.get(ParentFieldMapper.NAME)).indexOf(Uid.DELIMITER) < 0) {
+                sourceMap.put(ParentFieldMapper.NAME, request.type() + Uid.DELIMITER + sourceMap.get(ParentFieldMapper.NAME));
             }
-            final ColumnDefinition cd = metadata.getColumnDefinition(colName);
-            if (cd != null) {
-                // we got a CQL column.
-                Object fieldValue = sourceMap.get(field);
-                try {
-                    if (fieldValue == null) {
-                        if (cd.type.isCollection()) {
-                            switch (((CollectionType<?>)cd.type).kind) {
-                            case LIST :
-                            case SET :
-                                map.put(field, CollectionSerializer.pack(Collections.emptyList(), 0, ProtocolVersion.CURRENT));
-                                break;
-                            case MAP :
-                                break;
-                            }
-                        } else {
-                            map.put(field, null);
-                        }
-                        continue;
-                    }
 
-                    if (mapper != null && mapper.cqlCollection().equals(CqlCollection.SINGLETON) && (fieldValue instanceof Collection)) {
-                        throw new MapperParsingException("field " + fieldMapper.name() + " should be a single value");
-                    }
+            if (docMapper.sourceMapper().enabled()) {
+                sourceMap.put(SourceFieldMapper.NAME, request.source());
+            }
 
-                    // hack to store percolate query as a string while mapper is an object mapper.
-                    if (metadata.cfName.equals("_percolator") && field.equals("query")) {
-                        if (cd.type.isCollection()) {
-                            switch (((CollectionType<?>)cd.type).kind) {
-                            case LIST :
-                                if ( ((ListType)cd.type).getElementsType().asCQL3Type().equals(CQL3Type.Native.TEXT) && !(fieldValue instanceof String)) {
-                                    // opaque list of objects serialized to JSON text
-                                    fieldValue = Collections.singletonList( Serializer.stringify(fieldValue) );
+            for (String field : sourceMap.keySet()) {
+                FieldMapper fieldMapper = field.startsWith(ParentFieldMapper.NAME) ? // workaround for _parent#<join_type>
+                    docMapper.parentFieldMapper() : fieldMappers.getMapper(field);
+                Mapper mapper = (fieldMapper != null) ? fieldMapper : objectMappers.get(field);
+                ByteBuffer colName;
+                if (mapper == null) {
+                    if (dynamicMappingEnable && !idMap.containsKey(field))
+                        throw new MapperException("Unmapped field ["+field+"]");
+                    colName = ByteBufferUtil.bytes(field);
+                } else {
+                    colName = mapper.cqlName();    // cached ByteBuffer column name.
+                }
+                final ColumnDefinition cd = metadata.getColumnDefinition(colName);
+                if (cd != null) {
+                    // we got a CQL column.
+                    Object fieldValue = sourceMap.get(field);
+                    try {
+                        if (fieldValue == null) {
+                            if (cd.type.isCollection()) {
+                                switch (((CollectionType<?>) cd.type).kind) {
+                                    case LIST:
+                                    case SET:
+                                        map.put(field, CollectionSerializer.pack(Collections.emptyList(), 0, ProtocolVersion.CURRENT));
+                                        break;
+                                    case MAP:
+                                        break;
                                 }
-                                break;
-                            case SET :
-                                if ( ((SetType)cd.type).getElementsType().asCQL3Type().equals(CQL3Type.Native.TEXT) &&  !(fieldValue instanceof String)) {
-                                    // opaque set of objects serialized to JSON text
-                                    fieldValue = Collections.singleton( Serializer.stringify(fieldValue) );
-                                }
-                                break;
+                            } else {
+                                map.put(field, null);
                             }
-                        } else {
-                            if (cd.type.asCQL3Type().equals(CQL3Type.Native.TEXT) && !(fieldValue instanceof String)) {
-                                // opaque singleton object serialized to JSON text
-                                fieldValue = Serializer.stringify(fieldValue);
+                            continue;
+                        }
+
+                        if (mapper != null && mapper.cqlCollection().equals(CqlCollection.SINGLETON) && (fieldValue instanceof Collection)) {
+                            throw new MapperParsingException("field " + fieldMapper.name() + " should be a single value");
+                        }
+
+                        // hack to store percolate query as a string while mapper is an object mapper.
+                        if (metadata.cfName.equals("_percolator") && field.equals("query")) {
+                            if (cd.type.isCollection()) {
+                                switch (((CollectionType<?>) cd.type).kind) {
+                                    case LIST:
+                                        if (((ListType) cd.type).getElementsType().asCQL3Type().equals(CQL3Type.Native.TEXT) && !(fieldValue instanceof String)) {
+                                            // opaque list of objects serialized to JSON text
+                                            fieldValue = Collections.singletonList(Serializer.stringify(fieldValue));
+                                        }
+                                        break;
+                                    case SET:
+                                        if (((SetType) cd.type).getElementsType().asCQL3Type().equals(CQL3Type.Native.TEXT) && !(fieldValue instanceof String)) {
+                                            // opaque set of objects serialized to JSON text
+                                            fieldValue = Collections.singleton(Serializer.stringify(fieldValue));
+                                        }
+                                        break;
+                                }
+                            } else {
+                                if (cd.type.asCQL3Type().equals(CQL3Type.Native.TEXT) && !(fieldValue instanceof String)) {
+                                    // opaque singleton object serialized to JSON text
+                                    fieldValue = Serializer.stringify(fieldValue);
+                                }
                             }
                         }
-                    }
 
-                    map.put(field, Serializer.serialize(request.index(), cfName, cd.type, field, fieldValue, mapper));
-                } catch (Exception e) {
-                    logger.error("[{}].[{}] failed to parse field {}={}", e, request.index(), cfName, field, fieldValue );
-                    throw e;
+                        map.put(field, Serializer.serialize(request.index(), cfName, cd.type, field, fieldValue, mapper));
+                    } catch (Exception e) {
+                        logger.error("[{}].[{}] failed to parse field {}={}", e, request.index(), cfName, field, fieldValue);
+                        throw e;
+                    }
                 }
             }
         }
