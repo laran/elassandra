@@ -129,7 +129,7 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
         MetaData newMetaData = metaDataBuilder.build();
         ClusterBlocks blocks = clusterBlocksBuilder.build();
 
-     // remove keyspace.table still having ES indices from the unindexedTables
+        // remove keyspace.table still having ES indices from the unindexedTables
         for(ObjectCursor<IndexMetaData> index:newMetaData.indices().values()) {
             for(ObjectCursor<MappingMetaData> type:index.value.getMappings().values()) 
                 unindexedTables.remove(index.value.keyspace(), type.value);
@@ -137,31 +137,54 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
         
         logger.debug("unindexed tables={}", unindexedTables);
         boolean clusterDropOnDelete = currentState.metaData().settings().getAsBoolean(ClusterService.SETTING_CLUSTER_DROP_ON_DELETE_INDEX, Boolean.getBoolean("es.drop_on_delete_index"));
-        for(IndexMetaData imd : unindexedTables.keySet()) {
-            if (Schema.instance.getKeyspaceInstance(imd.keyspace()) != null) {
-                // keyspace still exists.
-                if (imd.getSettings().getAsBoolean(IndexMetaData.SETTING_DROP_ON_DELETE_INDEX, clusterDropOnDelete)) {
+        if (unindexedTables.isEmpty()) {
+            // check for existing unidexed empty keyspaces
+            for (final Index index : indices) {
+                final IndexMetaData imd = currentState.metaData().index(index);
+                if (Schema.instance.getKeyspaceInstance(imd.keyspace()) != null && imd.getSettings().getAsBoolean(IndexMetaData.SETTING_DROP_ON_DELETE_INDEX, clusterDropOnDelete)) {
                     int tableCount = 0;
                     for(CFMetaData tableOrView : Schema.instance.getKeyspaceInstance(imd.keyspace()).getMetadata().tablesAndViews()) {
-                        if (tableOrView.isCQLTable())
+                        if (tableOrView.isCQLTable()) {
                             tableCount++;
+                            break;
+                        }
                     }
-                    if (tableCount == unindexedTables.get(imd).size()) {
-                        // drop keyspace instead of droping all tables.
+                    if (tableCount == 0) {
                         try {
                             MetaDataDeleteIndexService.this.clusterService.dropIndexKeyspace(imd.keyspace());
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
-                    } else {
-                        // drop tables
-                        for(String table : unindexedTables.get(imd))
-                            MetaDataDeleteIndexService.this.clusterService.dropTable(imd.keyspace(), table);
                     }
-                } else {
-                    // drop secondary indices
-                    for(String table : unindexedTables.get(imd))
-                        MetaDataDeleteIndexService.this.clusterService.dropSecondaryIndex(imd.keyspace(), table);
+                }
+            }
+        } else {
+            for(IndexMetaData imd : unindexedTables.keySet()) {
+                if (Schema.instance.getKeyspaceInstance(imd.keyspace()) != null) {
+                    // keyspace still exists.
+                    if (imd.getSettings().getAsBoolean(IndexMetaData.SETTING_DROP_ON_DELETE_INDEX, clusterDropOnDelete)) {
+                        int tableCount = 0;
+                        for(CFMetaData tableOrView : Schema.instance.getKeyspaceInstance(imd.keyspace()).getMetadata().tablesAndViews()) {
+                            if (tableOrView.isCQLTable())
+                                tableCount++;
+                        }
+                        if (tableCount == unindexedTables.get(imd).size()) {
+                            // drop keyspace instead of droping all tables.
+                            try {
+                                MetaDataDeleteIndexService.this.clusterService.dropIndexKeyspace(imd.keyspace());
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
+                        } else {
+                            // drop tables
+                            for(String table : unindexedTables.get(imd))
+                                MetaDataDeleteIndexService.this.clusterService.dropTable(imd.keyspace(), table);
+                        }
+                    } else {
+                        // drop secondary indices
+                        for(String table : unindexedTables.get(imd))
+                            MetaDataDeleteIndexService.this.clusterService.dropSecondaryIndex(imd.keyspace(), table);
+                    }
                 }
             }
         }

@@ -391,10 +391,13 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                     indexSettingsBuilder.put(SETTING_NUMBER_OF_REPLICAS, number_of_replicas);
                 }
                 
+                // check that we can instanciate the search strategy
                 if (indexSettingsBuilder.get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS) != null) {
-                    // check that we can instanciate the search strategy
                     AbstractSearchStrategy.getSearchStrategyClass(indexSettingsBuilder.get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS)).newInstance();
+                } else {
+                    AbstractSearchStrategy.getSearchStrategyClass(clusterService.getClusterSettings().get(ClusterService.CLUSTER_SEARCH_STRATEGY_CLASS_SETTING)).newInstance();
                 }
+                
                 /*
                 if (indexSettingsBuilder.get(SETTING_NUMBER_OF_SHARDS) == null) {
                     indexSettingsBuilder.put(SETTING_NUMBER_OF_SHARDS, settings.getAsInt(SETTING_NUMBER_OF_SHARDS, 5));

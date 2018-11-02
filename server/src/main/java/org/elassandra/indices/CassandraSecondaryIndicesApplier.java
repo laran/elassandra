@@ -75,7 +75,7 @@ public class CassandraSecondaryIndicesApplier extends AbstractComponent implemen
                 IndexMetaData indexMetaData = event.state().metaData().index(index);
                 if (indexMetaData != null && indexMetaData.mapping(mapping.right.type()) != null) {
                     try {
-                        String clazz = indexMetaData.getSettings().get(IndexMetaData.SETTING_SECONDARY_INDEX_CLASS, event.state().metaData().settings().get(ClusterService.SETTING_CLUSTER_SECONDARY_INDEX_CLASS, ClusterService.defaultSecondaryIndexClass.getName()));
+                        String clazz = indexMetaData.getSettings().get(IndexMetaData.SETTING_SECONDARY_INDEX_CLASS, clusterService.getClusterSettings().get(ClusterService.CLUSTER_SECONDARY_INDEX_CLASS_SETTING));
                         logger.debug("Creating secondary indices for table={}.{} with class={}", indexMetaData.keyspace(), mapping.right.type(),clazz);
                         this.clusterService.createSecondaryIndex(indexMetaData.keyspace(), mapping.right, clazz);
                         updatedMapping.remove(mapping);
