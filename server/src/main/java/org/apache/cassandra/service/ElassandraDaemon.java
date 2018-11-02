@@ -30,6 +30,7 @@ import org.apache.cassandra.utils.WindowsTimer;
 import org.apache.logging.log4j.Logger;
 import org.elassandra.NoPersistedMetaDataException;
 import org.elassandra.discovery.CassandraDiscovery;
+import org.elassandra.env.EnvironmentLoader;
 import org.elassandra.index.ElasticSecondaryIndex;
 import org.elasticsearch.ExceptionsHelper;
 import org.elasticsearch.Version;
@@ -294,10 +295,6 @@ public class ElassandraDaemon extends CassandraDaemon {
     public void completeSetup() 
     {
         super.completeSetup();
-        /*
-        if (this.node != null && this.node.clusterService() != null) 
-            this.node.clusterService().publishGossipStates();
-        */
         for(SetupListener listener : setupListeners)
             listener.onComplete();
     }
@@ -538,18 +535,28 @@ public class ElassandraDaemon extends CassandraDaemon {
         
         String stage = "Initialization";
 
+        
         try {
             if (!foreground) {
                 System.out.close();
             }
-            instance = new ElassandraDaemon(InternalSettingsPreparer.prepareEnvironment(
-                    Settings.builder()
-                    .put("node.name","node0")
-                    .put("path.home",getHomeDir())
-                    .build(),
-                    foreground ? Terminal.DEFAULT : null,
-                    Collections.EMPTY_MAP, 
-                    Paths.get(getConfigDir())));
+            
+            String envLoaderClass = System.getProperty("elasticsearch.config.loader");
+            EnvironmentLoader envloader = envLoaderClass == null
+                                           ? new EnvironmentLoader() {
+                                                public Environment loadEnvironment(boolean foreground, String homeDir, String configDir) {
+                                                    return InternalSettingsPreparer.prepareEnvironment(
+                                                            Settings.builder()
+                                                            .put("node.name","node0")
+                                                            .put("path.home", homeDir)
+                                                            .build(),
+                                                            foreground ? Terminal.DEFAULT : null,
+                                                            Collections.EMPTY_MAP, 
+                                                            Paths.get(configDir));
+                                                }
+                                            }
+                                           : FBUtilities.<EnvironmentLoader>construct(envLoaderClass, "elasticsearch environment loader");
+            instance = new ElassandraDaemon(envloader.loadEnvironment(foreground, getHomeDir(), getConfigDir()));
             
             instance.activate(true, true, instance.env.settings(), instance.env,  Collections.<Class<? extends Plugin>>emptyList());
             if (!foreground) {
