@@ -23,6 +23,6 @@ import org.elasticsearch.env.Environment;
 
 public interface EnvironmentLoader {
 
-    public Environment loadEnvironment(boolean foureground, String homeDir, String configDir);
-    
+    public Environment loadEnvironment(boolean foreground, String homeDir, String configDir);
+
 }
