@@ -274,7 +274,12 @@ public class MetaDataCreateIndexService extends AbstractComponent {
         public boolean doPresistMetaData() {
             return true;
         }
-        
+
+        @Override
+        public boolean updateCqlSchema() {
+            return true;
+        }
+
         @Override
         public ClusterState execute(ClusterState currentState) throws Exception {
             Index createdIndex = null;
@@ -370,7 +375,7 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                 // now, put the request settings, so they override templates
                 indexSettingsBuilder.put(request.settings());
                 indexSettingsBuilder.put(SETTING_NUMBER_OF_SHARDS, clusterService.state().nodes().getSize());
-                
+
                 String keyspace = indexSettingsBuilder.get(IndexMetaData.SETTING_KEYSPACE);
                 if (keyspace == null) {
                     keyspace = ClusterService.indexToKsName(request.index());
@@ -383,21 +388,21 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                         throw new InvalidIndexNameException(null, keyspace, "Invalid cassandra keyspace name");
                     }
                 }
-                
+
                 if (Schema.instance != null && Schema.instance.getKeyspaceInstance(keyspace) != null) {
                     indexSettingsBuilder.put(SETTING_NUMBER_OF_REPLICAS, Schema.instance.getKeyspaceInstance(keyspace).getReplicationStrategy().getReplicationFactor() - 1 );
                 } else {
                     int number_of_replicas = Math.min( request.settings().getAsInt(SETTING_NUMBER_OF_REPLICAS, settings.getAsInt(SETTING_NUMBER_OF_REPLICAS, 0)) , clusterService.state().nodes().getSize()-1);
                     indexSettingsBuilder.put(SETTING_NUMBER_OF_REPLICAS, number_of_replicas);
                 }
-                
+
                 // check that we can instanciate the search strategy
                 if (indexSettingsBuilder.get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS) != null) {
                     AbstractSearchStrategy.getSearchStrategyClass(indexSettingsBuilder.get(IndexMetaData.SETTING_SEARCH_STRATEGY_CLASS)).newInstance();
                 } else {
                     AbstractSearchStrategy.getSearchStrategyClass(clusterService.getClusterSettings().get(ClusterService.CLUSTER_SEARCH_STRATEGY_CLASS_SETTING)).newInstance();
                 }
-                
+
                 /*
                 if (indexSettingsBuilder.get(SETTING_NUMBER_OF_SHARDS) == null) {
                     indexSettingsBuilder.put(SETTING_NUMBER_OF_SHARDS, settings.getAsInt(SETTING_NUMBER_OF_SHARDS, 5));
@@ -409,7 +414,7 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                     indexSettingsBuilder.put(SETTING_AUTO_EXPAND_REPLICAS, settings.get(SETTING_AUTO_EXPAND_REPLICAS));
                 }
                 */
-                
+
                 if (indexSettingsBuilder.get(SETTING_VERSION_CREATED) == null) {
                     DiscoveryNodes nodes = currentState.nodes();
                     final Version createdVersion = Version.min(Version.CURRENT, nodes.getSmallestNonClientNodeVersion());
@@ -546,18 +551,18 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                 final IndexMetaData indexMetaData;
                 try {
                     indexMetaData = indexMetaDataBuilder.build();
-                    
+
                     if (!currentState.blocks().hasGlobalBlock(CassandraGatewayService.NO_CASSANDRA_RING_BLOCK)) {
                         // don't create a keyspace while cassandra is not fully started.
                         String keyspaceName = indexMetaData.keyspace();
                         logger.debug("creating if not exists keyspace {} with RF={}", keyspaceName, indexMetaData.getNumberOfReplicas()+1);
-                        clusterService.createIndexKeyspace(keyspaceName, indexMetaData.getNumberOfReplicas()+1, indexMetaData.replication());
-                        
+                        clusterService.getSchemaManager().createIndexKeyspace(keyspaceName, indexMetaData.getNumberOfReplicas()+1, indexMetaData.replication());
+
                         // create a cassandra table per type.
                         for (ObjectObjectCursor<String,MappingMetaData> cursor : indexMetaData.getMappings()) {
                             MappingMetaData mappingMd = cursor.value;
                             if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                                clusterService.updateTableSchema(indicesService.indexService(indexMetaData.getIndex()).mapperService(), mappingMd);
+                                clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, false);
                             }
                         }
                     } else {

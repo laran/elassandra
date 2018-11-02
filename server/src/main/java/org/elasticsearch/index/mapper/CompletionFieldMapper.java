@@ -31,8 +31,8 @@ import org.apache.lucene.search.suggest.document.FuzzyCompletionQuery;
 import org.apache.lucene.search.suggest.document.PrefixCompletionQuery;
 import org.apache.lucene.search.suggest.document.RegexCompletionQuery;
 import org.apache.lucene.search.suggest.document.SuggestField;
+import org.elassandra.cluster.SchemaManager;
 import org.elasticsearch.Version;
-import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.ParseField;
 import org.elasticsearch.common.ParsingException;
 import org.elasticsearch.common.settings.Settings;
@@ -329,7 +329,7 @@ public class CompletionFieldMapper extends FieldMapper implements ArrayValueMapp
         
         @Override
         public String cqlType() {
-            return ClusterService.COMPLETION_TYPE;
+            return SchemaManager.COMPLETION_TYPE;
         }
 
         @Override
@@ -706,6 +706,6 @@ public class CompletionFieldMapper extends FieldMapper implements ArrayValueMapp
     
     @Override
     public String cqlType() {
-        return ClusterService.COMPLETION_TYPE;
+        return SchemaManager.COMPLETION_TYPE;
     }
 }

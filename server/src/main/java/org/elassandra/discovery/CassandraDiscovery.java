@@ -239,7 +239,7 @@ public class CassandraDiscovery extends AbstractLifecycleComponent implements Di
                     ClusterState.Builder newStateBuilder = ClusterState.builder(currentState).nodes(nodes());
                     ClusterBlocks.Builder blocks = ClusterBlocks.builder().blocks(currentState.blocks());
                     
-                    if (schemaMetaData != null) {
+                    if (schemaMetaData != null && schemaMetaData.version() > currentState.metaData().version()) {
                         // update blocks
                         if (schemaMetaData.settings().getAsBoolean("cluster.blocks.read_only", false))
                             blocks.addGlobalBlock(MetaData.CLUSTER_READ_ONLY_BLOCK);
@@ -582,7 +582,7 @@ public class CassandraDiscovery extends AbstractLifecycleComponent implements Di
                 final Long version = Long.valueOf(versionValue.value.substring(i+1));
                 if (version > this.clusterState.metaData().version()) {
                     if (logger.isTraceEnabled()) 
-                        logger.trace("Endpoint={} X2={} => updating metaData", endpoint, state, versionValue.value);
+                        logger.trace("Endpoint={} X2={} => updating metaData", endpoint, versionValue.value);
                     updateMetadata("X2-" + endpoint + "-" +versionValue.value, version);
                 }
                 if (this.metaDataVersionAckListener.get() != null) {
@@ -1023,7 +1023,7 @@ public class CassandraDiscovery extends AbstractLifecycleComponent implements Di
                     e);
             }
         };
-        clusterApplier.onNewClusterState("apply-locally-on-node[" + clusterChangedEvent.source() + "]", () -> this.clusterState, listener);
+        clusterApplier.onNewClusterState("apply-locally-on-node[" + clusterChangedEvent.source() + "]", () -> this.clusterState, listener, clusterChangedEvent.updateCqlSchema());
     }
 
     @Override

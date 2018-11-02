@@ -246,7 +246,7 @@ public class MasterService extends AbstractLifecycleComponent {
                 logger.debug("cluster state updated, version [{}], source [{}]", newClusterState.version(), summary);
             }
             try {
-                ClusterChangedEvent clusterChangedEvent = new ClusterChangedEvent(summary, newClusterState, previousClusterState, taskOutputs.doPersistMetadata, taskOutputs.taskInputs);
+                ClusterChangedEvent clusterChangedEvent = new ClusterChangedEvent(summary, newClusterState, previousClusterState, taskOutputs.doPersistMetadata, taskOutputs.taskInputs, taskOutputs.updateCqlSchema);
                 // new cluster state, notify all listeners
                 final DiscoveryNodes.Delta nodesDelta = clusterChangedEvent.nodesDelta();
                 if (nodesDelta.hasChanges() && logger.isInfoEnabled()) {
@@ -315,7 +315,7 @@ public class MasterService extends AbstractLifecycleComponent {
         // With Elassandra, only metadata.version is global and increased only when persisting the new metadata in CassandraDiscovery.publish()
         ClusterState newClusterState = clusterTasksResult.resultingState;
         return new TaskOutputs(taskInputs, previousClusterState, newClusterState, getNonFailedTasks(taskInputs, clusterTasksResult),
-            clusterTasksResult.executionResults, clusterTasksResult.doPresistMetaData);
+            clusterTasksResult.executionResults, clusterTasksResult.doPresistMetaData, clusterTasksResult.updateCqlSchema);
     }
 
     private ClusterState patchVersions(ClusterState previousClusterState, ClusterTasksResult<?> executionResult) {
@@ -389,18 +389,21 @@ public class MasterService extends AbstractLifecycleComponent {
         public final List<Batcher.UpdateTask> nonFailedTasks;
         public final Map<Object, ClusterStateTaskExecutor.TaskResult> executionResults;
         public final boolean doPersistMetadata;
+        public final boolean updateCqlSchema;
 
         TaskOutputs(TaskInputs taskInputs, ClusterState previousClusterState,
                            ClusterState newClusterState,
                            List<Batcher.UpdateTask> nonFailedTasks,
                            Map<Object, ClusterStateTaskExecutor.TaskResult> executionResults,
-                           boolean doPersistMetadata) {
+                           boolean doPersistMetadata,
+                           boolean updateCqlSchema) {
             this.taskInputs = taskInputs;
             this.previousClusterState = previousClusterState;
             this.newClusterState = newClusterState;
             this.nonFailedTasks = nonFailedTasks;
             this.executionResults = executionResults;
             this.doPersistMetadata = doPersistMetadata;
+            this.updateCqlSchema = updateCqlSchema;
         }
 
         public void publishingFailed(Discovery.FailedToCommitClusterStateException t) {

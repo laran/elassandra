@@ -1,7 +1,7 @@
 /*
  * Copyright (c) 2017 Strapdata (http://www.strapdata.com)
  * Contains some code from Elasticsearch (http://www.elastic.co)
- * 
+ *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with
  * the License. You may obtain a copy of the License at
  *
@@ -21,15 +21,9 @@ import org.elasticsearch.cluster.ClusterChangedEvent;
 import org.elasticsearch.cluster.ClusterStateApplier;
 import org.elasticsearch.cluster.metadata.IndexMetaData;
 import org.elasticsearch.cluster.metadata.MappingMetaData;
-import org.elasticsearch.cluster.node.DiscoveryNode;
-import org.elasticsearch.cluster.routing.RoutingTable;
-import org.elasticsearch.cluster.routing.ShardRouting;
 import org.elasticsearch.cluster.service.ClusterService;
 import org.elasticsearch.common.component.AbstractComponent;
 import org.elasticsearch.common.settings.Settings;
-import org.elasticsearch.index.IndexService;
-import org.elasticsearch.index.shard.IndexShard;
-import org.elasticsearch.indices.IndicesService;
 
 /**
  * Post applied cluster state listener.
@@ -45,22 +39,22 @@ import java.util.concurrent.CopyOnWriteArraySet;
  *
  */
 public class CassandraSecondaryIndicesApplier extends AbstractComponent implements ClusterStateApplier {
-    
+
     private final ClusterService clusterService;
-    
+
     private final CopyOnWriteArraySet<Pair<String,MappingMetaData>> updatedMapping = new CopyOnWriteArraySet<>();
     private final CopyOnWriteArraySet<String> initilizingShards = new CopyOnWriteArraySet<>();
-    
+
     public CassandraSecondaryIndicesApplier(Settings settings, ClusterService clusterService) {
         super(settings);
         this.clusterService = clusterService;
     }
-    
+
     // called only by the coordinator of a mapping change on pre-applied phase
     public void updateMapping(String index, MappingMetaData mapping) {
         updatedMapping.add(Pair.create(index, mapping));
     }
-    
+
     public void recoverShard(String index) {
         initilizingShards.add(index);
     }
@@ -77,7 +71,7 @@ public class CassandraSecondaryIndicesApplier extends AbstractComponent implemen
                     try {
                         String clazz = indexMetaData.getSettings().get(IndexMetaData.SETTING_SECONDARY_INDEX_CLASS, clusterService.getClusterSettings().get(ClusterService.CLUSTER_SECONDARY_INDEX_CLASS_SETTING));
                         logger.debug("Creating secondary indices for table={}.{} with class={}", indexMetaData.keyspace(), mapping.right.type(),clazz);
-                        this.clusterService.createSecondaryIndex(indexMetaData.keyspace(), mapping.right, clazz);
+                        this.clusterService.getSchemaManager().createSecondaryIndex(indexMetaData.keyspace(), mapping.right, clazz);
                         updatedMapping.remove(mapping);
                     } catch (IOException e) {
                         logger.error("Failed to create secondary indices for table={}.{}", e, indexMetaData.keyspace(), mapping.right.type());

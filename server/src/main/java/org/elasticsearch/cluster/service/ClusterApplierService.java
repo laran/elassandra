@@ -152,14 +152,17 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         final ClusterStateTaskListener listener;
         final Function<ClusterState, ClusterState> updateFunction;
         final boolean doPersistMetadata;
+        final boolean updateCqlSchema;
         
         UpdateTask(Priority priority, String source, ClusterStateTaskListener listener,
                    Function<ClusterState, ClusterState> updateFunction, 
-                   boolean doPersistMetadata) {
+                   boolean doPersistMetadata,
+                   boolean updateCqlSchema) {
             super(priority, source);
             this.listener = listener;
             this.updateFunction = updateFunction;
             this.doPersistMetadata = doPersistMetadata;
+            this.updateCqlSchema = updateCqlSchema;
         }
 
         @Override
@@ -174,6 +177,10 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         
         public boolean doPersistMetadata() {
             return this.doPersistMetadata;
+        }
+
+        public boolean updateCqlSchema() {
+            return this.updateCqlSchema;
         }
     }
 
@@ -332,7 +339,13 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
 
     @Override
     public void onNewClusterState(final String source, final java.util.function.Supplier<ClusterState> clusterStateSupplier,
-                                  final ClusterStateTaskListener listener) {
+            final ClusterStateTaskListener listener) {
+        onNewClusterState(source, clusterStateSupplier, listener, false);
+    }
+    
+    @Override
+    public void onNewClusterState(final String source, final java.util.function.Supplier<ClusterState> clusterStateSupplier,
+                                  final ClusterStateTaskListener listener, boolean updateCqlSchema) {
         Function<ClusterState, ClusterState> applyFunction = currentState -> {
             ClusterState nextState = clusterStateSupplier.get();
             if (nextState != null) {
@@ -341,7 +354,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
                 return currentState;
             }
         };
-        submitStateUpdateTask(source, ClusterStateTaskConfig.build(Priority.HIGH), applyFunction, listener);
+        submitStateUpdateTask(source, ClusterStateTaskConfig.build(Priority.HIGH, null, updateCqlSchema, updateCqlSchema), applyFunction, listener);
     }
 
     private void submitStateUpdateTask(final String source, final ClusterStateTaskConfig config,
@@ -351,7 +364,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
             return;
         }
         try {
-            UpdateTask updateTask = new UpdateTask(config.priority(), source, new SafeClusterStateTaskListener(listener, logger), executor, config.doPresistMetaData());
+            UpdateTask updateTask = new UpdateTask(config.priority(), source, new SafeClusterStateTaskListener(listener, logger), executor, config.doPresistMetaData(), config.updateCqlSchema());
             if (config.timeout() != null) {
                 threadPoolExecutor.execute(updateTask, config.timeout(),
                     () -> threadPool.generic().execute(
@@ -473,7 +486,7 @@ public class ClusterApplierService extends AbstractLifecycleComponent implements
         // update routing table.
         newClusterState = ClusterState.builder(newClusterState).routingTable(RoutingTable.build(clusterService, newClusterState)).build();
         
-        ClusterChangedEvent clusterChangedEvent = new ClusterChangedEvent(task.source, newClusterState, previousClusterState, task.doPersistMetadata, null);
+        ClusterChangedEvent clusterChangedEvent = new ClusterChangedEvent(task.source, newClusterState, previousClusterState, task.doPersistMetadata, null, task.updateCqlSchema);
         // new cluster state, notify all listeners
         final DiscoveryNodes.Delta nodesDelta = clusterChangedEvent.nodesDelta();
         if (nodesDelta.hasChanges() && logger.isInfoEnabled()) {
