@@ -38,6 +38,7 @@ import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.marshal.UTF8Type;
 import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.exceptions.RequestExecutionException;
+import org.apache.cassandra.exceptions.RequestValidationException;
 import org.apache.cassandra.locator.NetworkTopologyStrategy;
 import org.apache.cassandra.schema.IndexMetadata;
 import org.apache.cassandra.schema.KeyspaceMetadata;
@@ -258,6 +259,7 @@ public class SchemaManager extends AbstractComponent {
     }
 
     public void updateTableSchema(final MapperService mapperService, final MappingMetaData mappingMd, final boolean doApply) throws IOException {
+        String query = null;
         try {
             boolean announce = false;
             Set<String> updatedUserTypes = new HashSet<>();
@@ -490,8 +492,9 @@ public class SchemaManager extends AbstractComponent {
                             columnsDefinitions.append(" static");
                         columnsDefinitions.append(",");
                     }
-                    String query = String.format(Locale.ROOT, "CREATE TABLE IF NOT EXISTS \"%s\".\"%s\" ( %s PRIMARY KEY (%s) ) WITH COMMENT='Auto-created by Elassandra'",
-                            ksName, cfName, columnsDefinitions.toString(), primaryKey.toString());
+                    query = String.format(Locale.ROOT, "CREATE TABLE IF NOT EXISTS \"%s\".\"%s\" ( %s PRIMARY KEY (%s) ) WITH %s",
+                            ksName, cfName, columnsDefinitions.toString(), primaryKey.toString(),
+                            mapperService.tableOptions() == null ? "COMMENT='Auto-created by Elassandra'" : mapperService.tableOptions());
                     logger.debug(query);
                     QueryProcessor.executeInternal(query);
                     announce = true;
@@ -505,7 +508,7 @@ public class SchemaManager extends AbstractComponent {
                         ColumnDefinition cdef = cfm.getColumnDefinition(cid);
                         if (cdef == null) {
                             try {
-                                String query = String.format(Locale.ROOT, "ALTER TABLE \"%s\".\"%s\" ADD %s %s", ksName, cfName, ColumnIdentifier.maybeQuote(colDesc.name), colDesc.type);
+                                query = String.format(Locale.ROOT, "ALTER TABLE \"%s\".\"%s\" ADD %s %s", ksName, cfName, ColumnIdentifier.maybeQuote(colDesc.name), colDesc.type);
                                 logger.debug(query);
                                 QueryProcessor.executeInternal(query);
                                 addedColumns.add(cid);
@@ -532,7 +535,8 @@ public class SchemaManager extends AbstractComponent {
                     MigrationManager.announce(builder, true);
                 }
             }
-
+        } catch (RequestValidationException e) {
+            throw new IOException("Failed to execute query:" + query + " : "+e.getMessage(), e);
         } catch (Throwable e) {
             throw new IOException(e.getMessage(), e);
         }

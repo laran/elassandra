@@ -77,7 +77,7 @@ public final class IndexScopedSettings extends AbstractScopedSettings {
         IndexMetaData.INDEX_BLOCKS_READ_ONLY_ALLOW_DELETE_SETTING,
         IndexMetaData.INDEX_PRIORITY_SETTING,
         IndexMetaData.INDEX_DATA_PATH_SETTING,
-        
+
         IndexMetaData.INDEX_SEARCH_STRATEGY_CLASS_SETTING,
         IndexMetaData.INDEX_SECONDARY_INDEX_CLASS_SETTING,
         IndexMetaData.INDEX_DROP_ON_DELETE_INDEX_SETTING,
@@ -90,6 +90,7 @@ public final class IndexScopedSettings extends AbstractScopedSettings {
         IndexMetaData.INDEX_TOKEN_RANGES_BITSET_CACHE_SETTING,
         IndexMetaData.INDEX_SETTING_KEYSPACE_SETTING,
         IndexMetaData.INDEX_SETTING_TABLE_SETTING,
+        IndexMetaData.INDEX_SETTING_TABLE_OPTIONS_SETTING,
         IndexMetaData.INDEX_SETTING_REPLICATION_SETTING,
         IndexMetaData.INDEX_INDEX_STATIC_COLUMNS_SETTING,
         IndexMetaData.INDEX_INDEX_STATIC_ONLY_SETTING,
