@@ -19,6 +19,8 @@
 
 package org.elasticsearch.cluster.metadata;
 
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.alias.IndicesAliasesClusterStateUpdateRequest;
@@ -41,6 +43,7 @@ import org.elasticsearch.indices.IndicesService;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -90,9 +93,14 @@ public class MetaDataIndexAliasesService extends AbstractComponent {
                 public boolean doPresistMetaData() {
                     return true;
                 }
-                
+
                 @Override
-                public ClusterState execute(ClusterState currentState) {
+                public ClusterState execute(ClusterState currentState) throws Exception {
+                    throw new UnsupportedOperationException();
+                }
+
+                @Override
+                public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
                     return innerExecute(currentState, request.actions());
                 }
             });

@@ -47,11 +47,7 @@ public interface ClusterStateTaskConfig {
     default boolean doPresistMetaData() {
         return false;
     }
-    
-    default boolean updateCqlSchema() {
-        return false;
-    }
-    
+
     /**
      * Build a cluster state update task configuration with the
      * specified {@link Priority} and no timeout.
@@ -86,21 +82,7 @@ public interface ClusterStateTaskConfig {
             }
         };
     }
-    
-    static ClusterStateTaskConfig build(Priority priority,  TimeValue timeout, boolean presistMetaData, boolean updateCqlSchema) {
-        return new Basic(priority, timeout) {
-            @Override
-            public boolean doPresistMetaData() {
-                return presistMetaData;
-            }
-            
-            @Override
-            public boolean updateCqlSchema() {
-                return updateCqlSchema;
-            }
-        };
-    }
-    
+
     class Basic implements ClusterStateTaskConfig {
         final TimeValue timeout;
         final Priority priority;
@@ -119,14 +101,9 @@ public interface ClusterStateTaskConfig {
         public Priority priority() {
             return priority;
         }
-              
+
         @Override
         public boolean doPresistMetaData() {
-            return false;
-        }
-        
-        @Override
-        public boolean updateCqlSchema() {
             return false;
         }
     }

@@ -1,3 +1,9 @@
+6.2.3.8 - 2018-11-5
+  * Add support for opaque storage of document _source
+  * Fix cluster settings
+  * Fix date field in primary key #222
+  * Refactor CQL schema management to reduce schema migration
+  
 6.2.3.7 - 2018-10-15
   * Improve license notice
   * Index document with empty mapping

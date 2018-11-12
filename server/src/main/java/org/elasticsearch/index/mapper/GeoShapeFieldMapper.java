@@ -18,6 +18,7 @@
  */
 package org.elasticsearch.index.mapper;
 
+import org.apache.cassandra.cql3.CQL3Type;
 import org.apache.lucene.index.IndexOptions;
 import org.apache.lucene.index.IndexableField;
 import org.apache.lucene.index.Term;
@@ -449,7 +450,7 @@ public class GeoShapeFieldMapper extends FieldMapper {
         public Query termQuery(Object value, QueryShardContext context) {
             throw new QueryShardException(context, "Geo fields do not support exact searching, use dedicated geo queries instead");
         }
-        
+
         @Override
         public Object cqlValue(Object value) {
             if (value instanceof Map) {
@@ -461,7 +462,7 @@ public class GeoShapeFieldMapper extends FieldMapper {
             }
             return value;
         }
-        
+
         @Override
         public String cqlType() {
             return "text";
@@ -586,9 +587,9 @@ public class GeoShapeFieldMapper extends FieldMapper {
     protected String contentType() {
         return CONTENT_TYPE;
     }
-    
+
     @Override
-    public String cqlType() {
-        return "text";
+    public CQL3Type CQL3Type() {
+        return CQL3Type.Native.TEXT;
     }
 }

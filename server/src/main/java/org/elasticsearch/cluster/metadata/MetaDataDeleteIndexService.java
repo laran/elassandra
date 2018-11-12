@@ -25,6 +25,8 @@ import com.google.common.collect.Multimap;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.elassandra.cluster.SchemaManager;
 import org.elasticsearch.action.ActionListener;
 import org.elasticsearch.action.admin.indices.delete.DeleteIndexClusterStateUpdateRequest;
@@ -47,6 +49,7 @@ import org.elasticsearch.snapshots.SnapshotsService;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Set;
 
 import static java.util.stream.Collectors.toSet;
@@ -87,7 +90,12 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
             }
 
             @Override
-            public ClusterState execute(final ClusterState currentState) {
+            public ClusterState execute(ClusterState currentState) throws Exception {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public ClusterState execute(final ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
                 return deleteIndices(currentState, Sets.newHashSet(request.indices()));
             }
         });

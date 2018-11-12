@@ -19,6 +19,8 @@
 
 package org.elasticsearch.index.mapper;
 
+import org.apache.cassandra.cql3.CQL3Type;
+import org.apache.cassandra.cql3.ColumnIdentifier;
 import org.apache.lucene.document.InetAddressPoint;
 import org.apache.lucene.document.SortedSetDocValuesField;
 import org.apache.lucene.document.StoredField;
@@ -330,7 +332,7 @@ public class IpFieldMapper extends FieldMapper {
             }
             return DocValueFormat.IP;
         }
-        
+
         @Override
         public String cqlType() {
             return "inet";
@@ -424,14 +426,14 @@ public class IpFieldMapper extends FieldMapper {
     @Override
     public void createField(ParseContext context, Object object) throws IOException {
         InetAddress address = null;
-        
+
         if (object instanceof String) {
             //TODO: find why we got String object here ?
             address = com.google.common.net.InetAddresses.forString((String)object);
         } else {
             address =  (InetAddress) object;
         }
-        
+
         if (address == null) {
             String ipAsString = fieldType().nullValueAsString();
             if (ipAsString == null) {
@@ -441,7 +443,7 @@ public class IpFieldMapper extends FieldMapper {
                 address = com.google.common.net.InetAddresses.forString(ipAsString);
             }
         }
-        
+
         if (context.includeInAll(includeInAll, this)) {
             context.allEntries().addText(fieldType().name(), NetworkAddress.format(address), fieldType().boost());
         }
@@ -456,7 +458,7 @@ public class IpFieldMapper extends FieldMapper {
         }
         super.createField(context, object); // for multi fields.
     }
-    
+
     @Override
     protected void doMerge(Mapper mergeWith, boolean updateAllTypes) {
         super.doMerge(mergeWith, updateAllTypes);
@@ -488,9 +490,8 @@ public class IpFieldMapper extends FieldMapper {
             builder.field("include_in_all", false);
         }
     }
-    
-    @Override
-    public String cqlType() {
-        return "inet";
+
+    public CQL3Type CQL3Type() {
+        return CQL3Type.Native.INET;
     }
 }

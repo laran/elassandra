@@ -713,13 +713,13 @@ public class QueryManager extends AbstractComponent {
                 indexService.index().getName(), cfName, request.id(), sourceMap,
                 request.waitForActiveShards().toCassandraConsistencyLevel());
 
-        final CFMetaData metadata = SchemaManager.getCFMetaData(keyspaceName, cfName);
+        final CFMetaData cfm = SchemaManager.getCFMetaData(keyspaceName, cfName);
 
         String id = request.id();
         Map<String, ByteBuffer> map = new HashMap<String, ByteBuffer>();
         if (indexMetaData.isOpaqueStorage()) {
-            map.put(IdFieldMapper.NAME, Serializer.serialize(request.index(), cfName, metadata.getColumnDefinition(docMapper.idFieldMapper().cqlName()).type, IdFieldMapper.NAME, id, docMapper.idFieldMapper()));
-            map.put(SourceFieldMapper.NAME, Serializer.serialize(request.index(), cfName, metadata.getColumnDefinition(docMapper.sourceMapper().cqlName()).type, SourceFieldMapper.NAME, request.source(), docMapper.sourceMapper()));
+            map.put(IdFieldMapper.NAME, Serializer.serialize(request.index(), cfName, cfm.getColumnDefinition(docMapper.idFieldMapper().cqlName()).type, IdFieldMapper.NAME, id, docMapper.idFieldMapper()));
+            map.put(SourceFieldMapper.NAME, Serializer.serialize(request.index(), cfName, cfm.getColumnDefinition(docMapper.sourceMapper().cqlName()).type, SourceFieldMapper.NAME, request.source(), docMapper.sourceMapper()));
         } else {
             if (request.parent() != null)
                 sourceMap.put(ParentFieldMapper.NAME, request.parent());
@@ -751,7 +751,7 @@ public class QueryManager extends AbstractComponent {
                 } else {
                     colName = mapper.cqlName();    // cached ByteBuffer column name.
                 }
-                final ColumnDefinition cd = metadata.getColumnDefinition(colName);
+                final ColumnDefinition cd = cfm.getColumnDefinition(colName);
                 if (cd != null) {
                     // we got a CQL column.
                     Object fieldValue = sourceMap.get(field);
@@ -777,7 +777,7 @@ public class QueryManager extends AbstractComponent {
                         }
 
                         // hack to store percolate query as a string while mapper is an object mapper.
-                        if (metadata.cfName.equals("_percolator") && field.equals("query")) {
+                        if (cfm.cfName.equals("_percolator") && field.equals("query")) {
                             if (cd.type.isCollection()) {
                                 switch (((CollectionType<?>) cd.type).kind) {
                                     case LIST:
@@ -824,11 +824,11 @@ public class QueryManager extends AbstractComponent {
             // set empty top-level fields to null to overwrite existing columns.
             for(FieldMapper m : fieldMappers) {
                 String fullname = m.name();
-                if (map.get(fullname) == null && !fullname.startsWith("_") && fullname.indexOf('.') == -1 && metadata.getColumnDefinition(m.cqlName()) != null)
+                if (map.get(fullname) == null && !fullname.startsWith("_") && fullname.indexOf('.') == -1 && cfm.getColumnDefinition(m.cqlName()) != null)
                     map.put(fullname, null);
             }
             for(String m : objectMappers.keySet()) {
-                if (map.get(m) == null && m.indexOf('.') == -1 && metadata.getColumnDefinition(objectMappers.get(m).cqlName()) != null)
+                if (map.get(m) == null && m.indexOf('.') == -1 && cfm.getColumnDefinition(objectMappers.get(m).cqlName()) != null)
                     map.put(m, null);
             }
             values = new ByteBuffer[map.size()];

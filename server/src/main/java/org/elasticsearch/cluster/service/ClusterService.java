@@ -500,7 +500,7 @@ public class ClusterService extends BaseClusterService {
     public UntypedResultSet process(final ConsistencyLevel cl, final ConsistencyLevel serialConsistencyLevel, ClientState clientState, final String query, Long writetime, final Object... values)
             throws RequestExecutionException, RequestValidationException, InvalidRequestException {
         if (logger.isDebugEnabled())
-            logger.debug("processing CL={} SERIAL_CL={} query={}", cl, serialConsistencyLevel, query);
+            logger.debug("processing CL={} SERIAL_CL={} query={} values={}", cl, serialConsistencyLevel, query, Arrays.asList(values));
 
         // retreive prepared
         QueryState queryState = new QueryState(clientState);
@@ -652,6 +652,8 @@ public class ClusterService extends BaseClusterService {
         });
     }
 
+
+
     @Override
     protected void doStart() {
         // add post-applied because 2i shoukd be created/deleted after that cassandra indices have taken the new mapping.
@@ -659,6 +661,7 @@ public class ClusterService extends BaseClusterService {
 
         super.doStart();
 
+        /*
         // start a thread for asynchronous CQL schema update, always the last update.
         Runnable task = new Runnable() {
             @Override
@@ -690,7 +693,13 @@ public class ClusterService extends BaseClusterService {
                 }
             }
         };
-        new Thread(task, "metadataSchemaUpdater").start();
+        new Thread(task, "metadataSchemaUpdater");
+        */
+    }
+
+    @Override
+    protected synchronized void doStop() {
+        super.doStop();
     }
 
     public void updateMapping(String ksName, MappingMetaData mapping) {
@@ -803,7 +812,8 @@ public class ClusterService extends BaseClusterService {
         // Issue #91, update C* schema asynchronously to avoid inter-locking with map column as nested object.
         logger.trace("Submit asynchronous CQL schema update for metadata={}", metaDataString);
         this.lastMetadataToSave.set(new MetadataSchemaUpdate(metaDataString, version));
-        this.metadataToSaveSemaphore.release();
+        if (!Boolean.getBoolean("es.no_mapping_in_schema"))
+            this.metadataToSaveSemaphore.release();
     }
 
     /**
@@ -1169,6 +1179,9 @@ public class ClusterService extends BaseClusterService {
                     IndexShard localIndexShard = indexServiceSafe(index).getShardOrNull(0);
                     if (localIndexShard != null && localIndexShard.routingEntry() != null)
                         return localIndexShard.routingEntry().state();
+
+                    // shardRouting not yet created.
+                    return ShardRoutingState.INITIALIZING;
                 } catch (IndexNotFoundException e) {
                 }
             }

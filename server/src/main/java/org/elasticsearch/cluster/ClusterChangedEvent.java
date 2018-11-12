@@ -53,14 +53,12 @@ public class ClusterChangedEvent {
     private final DiscoveryNodes.Delta nodesDelta;
 
     // added to avoid to save a just recovered cluster state.
-    
-    private final TaskInputs taskInputs;
-    
-    private final boolean peristMetaData;
-    
-    private final boolean updateCqlSchema;
 
-    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs, boolean updateCqlSchema) {
+    private final TaskInputs taskInputs;
+
+    private final boolean peristMetaData;
+
+    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs) {
         Objects.requireNonNull(source, "source must not be null");
         Objects.requireNonNull(state, "state must not be null");
         Objects.requireNonNull(previousState, "previousState must not be null");
@@ -70,27 +68,18 @@ public class ClusterChangedEvent {
         this.nodesDelta = state.nodes().delta(previousState.nodes());
         this.peristMetaData = peristMetaData;
         this.taskInputs = taskInputs;
-        this.updateCqlSchema = updateCqlSchema;
-    }
-
-    public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, boolean peristMetaData, TaskInputs taskInputs) {
-        this(source, state, previousState, peristMetaData, taskInputs, false);
     }
 
     public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState, TaskInputs taskInputs) {
         this(source, state, previousState, false, taskInputs);
     }
-    
+
     public ClusterChangedEvent(String source, ClusterState state, ClusterState previousState) {
         this(source, state, previousState, false, null);
     }
-    
+
     public boolean peristMetaData() {
         return peristMetaData;
-    }
-    
-    public boolean updateCqlSchema() {
-        return updateCqlSchema;
     }
 
     /**
@@ -110,7 +99,7 @@ public class ClusterChangedEvent {
     public TaskInputs taskInputs() {
         return this.taskInputs;
     }
-    
+
     /**
      * The previous cluster state for this change event.
      */

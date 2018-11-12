@@ -18,6 +18,7 @@
  */
 package org.elasticsearch.index.mapper;
 
+import org.apache.cassandra.cql3.CQL3Type;
 import org.apache.lucene.document.LatLonDocValuesField;
 import org.apache.lucene.document.LatLonPoint;
 import org.apache.lucene.document.StoredField;
@@ -173,7 +174,7 @@ public class GeoPointFieldMapper extends FieldMapper implements ArrayValueMapper
         public String typeName() {
             return CONTENT_TYPE;
         }
-        
+
         @Override
         public String cqlType() {
             return SchemaManager.GEO_POINT_TYPE;
@@ -325,7 +326,7 @@ public class GeoPointFieldMapper extends FieldMapper implements ArrayValueMapper
     }
 
     @Override
-    public String cqlType() {
-        return "geo_point";
+    public CQL3Type CQL3Type() {
+        throw new UnsupportedOperationException();
     }
 }

@@ -18,10 +18,14 @@
  */
 package org.elasticsearch.cluster;
 
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.common.unit.TimeValue;
 
+import java.util.Collection;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -42,11 +46,17 @@ public abstract class LocalClusterUpdateTask implements ClusterStateTaskConfig, 
 
     public abstract ClusterTasksResult<LocalClusterUpdateTask> execute(ClusterState currentState) throws Exception;
 
+    public ClusterTasksResult<LocalClusterUpdateTask> execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) throws Exception {
+        return execute(currentState);
+    }
+
     @Override
     public final ClusterTasksResult<LocalClusterUpdateTask> execute(ClusterState currentState,
                                                                     List<LocalClusterUpdateTask> tasks) throws Exception {
         assert tasks.size() == 1 && tasks.get(0) == this : "expected one-element task list containing current object but was " + tasks;
-        ClusterTasksResult<LocalClusterUpdateTask> result = execute(currentState);
+        Collection<Mutation> mutations = new LinkedList<>();
+        Collection<Event.SchemaChange> events = new LinkedList<>();
+        ClusterTasksResult<LocalClusterUpdateTask> result = execute(currentState, mutations, events);
         boolean doPeristMetadata = false;
         for(LocalClusterUpdateTask task : tasks) {
             if (task.doPresistMetaData()) {
@@ -54,14 +64,7 @@ public abstract class LocalClusterUpdateTask implements ClusterStateTaskConfig, 
                 break;
             }
         }
-        boolean updateCqlSchema = false;
-        for(LocalClusterUpdateTask task : tasks) {
-            if (task.doPresistMetaData()) {
-                updateCqlSchema = true;
-                break;
-            }
-        }
-        return ClusterTasksResult.<LocalClusterUpdateTask>builder().successes(tasks).build(result, currentState, doPeristMetadata, updateCqlSchema);
+        return ClusterTasksResult.<LocalClusterUpdateTask>builder().successes(tasks).build(result, currentState, doPeristMetadata, mutations, events);
     }
 
     /**
@@ -90,7 +93,7 @@ public abstract class LocalClusterUpdateTask implements ClusterStateTaskConfig, 
     public final boolean runOnlyOnMaster() {
         return false;
     }
-    
+
     @Override
     public boolean doPresistMetaData() {
         return false;

@@ -19,10 +19,14 @@
 
 package org.elasticsearch.cluster;
 
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.elasticsearch.common.Nullable;
 import org.elasticsearch.common.Priority;
 import org.elasticsearch.common.unit.TimeValue;
 
+import java.util.Collection;
+import java.util.LinkedList;
 import java.util.List;
 
 /**
@@ -42,8 +46,11 @@ public abstract class ClusterStateUpdateTask implements ClusterStateTaskConfig, 
 
     @Override
     public final ClusterTasksResult<ClusterStateUpdateTask> execute(ClusterState currentState, List<ClusterStateUpdateTask> tasks) throws Exception {
-        ClusterState result = execute(currentState);
-        return ClusterTasksResult.<ClusterStateUpdateTask>builder().successes(tasks).build(result, tasks.stream().anyMatch(t -> t.doPresistMetaData()), tasks.stream().anyMatch(t -> t.updateCqlSchema()));
+        Collection<Mutation> mutations = new LinkedList<>();
+        Collection<Event.SchemaChange> events = new LinkedList<>();
+        ClusterState result = execute(currentState, mutations, events);
+        return ClusterTasksResult.<ClusterStateUpdateTask>builder().successes(tasks)
+                .build(result, tasks.stream().anyMatch(t -> t.doPresistMetaData()), mutations, events);
     }
 
     @Override
@@ -56,6 +63,10 @@ public abstract class ClusterStateUpdateTask implements ClusterStateTaskConfig, 
      * should be changed.
      */
     public abstract ClusterState execute(ClusterState currentState) throws Exception;
+
+    public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) throws Exception {
+        return execute(currentState);
+    }
 
     /**
      * A callback called when execute fails.
@@ -84,7 +95,7 @@ public abstract class ClusterStateUpdateTask implements ClusterStateTaskConfig, 
     public final boolean runOnlyOnMaster() {
         return true;
     }
-    
+
     @Override
     public boolean doPresistMetaData() {
         return false;

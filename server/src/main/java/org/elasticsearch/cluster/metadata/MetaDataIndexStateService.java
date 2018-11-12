@@ -19,6 +19,8 @@
 
 package org.elasticsearch.cluster.metadata;
 
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.elasticsearch.ElasticsearchException;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.ActionListener;
@@ -48,6 +50,7 @@ import org.elasticsearch.threadpool.ThreadPool;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -95,9 +98,14 @@ public class MetaDataIndexStateService extends AbstractComponent {
             public boolean doPresistMetaData() {
                 return true;
             }
-            
+
             @Override
-            public ClusterState execute(ClusterState currentState) {
+            public ClusterState execute(ClusterState currentState) throws Exception {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
                 Set<IndexMetaData> indicesToClose = new HashSet<>();
                 for (Index index : request.indices()) {
                     final IndexMetaData indexMetaData = currentState.metaData().getIndexSafe(index);
@@ -178,9 +186,14 @@ public class MetaDataIndexStateService extends AbstractComponent {
             public boolean doPresistMetaData() {
                 return true;
             }
-            
+
             @Override
-            public ClusterState execute(ClusterState currentState) {
+            public ClusterState execute(ClusterState currentState) throws Exception {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
                 List<IndexMetaData> indicesToOpen = new ArrayList<>();
                 for (Index index : request.indices()) {
                     final IndexMetaData indexMetaData = currentState.metaData().getIndexSafe(index);

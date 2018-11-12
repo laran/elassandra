@@ -363,23 +363,6 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 try {
                     indexService = indicesService.createIndex(indexMetaData, buildInIndexListener);
                     indexService.updateMapping(indexMetaData);
-
-                    if (event.updateCqlSchema()) {
-                        // update CQL schema
-                        for (ObjectObjectCursor<String,MappingMetaData> cursor : indexMetaData.getMappings()) {
-                            MappingMetaData mappingMd = cursor.value;
-                            if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                                try {
-                                    clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, true);
-                                } catch (IOException e) {
-                                    if (logger.isWarnEnabled()) {
-                                        logger.warn("[{}][{}] failed to update CQL schema", indexMetaData.getIndex(),  indexMetaData.getIndexUUID(), e);
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                 } catch (Throwable e) {
                     if (logger.isWarnEnabled()) {
                         logger.warn("[{}][{}] failed to create index", indexMetaData.getIndex(),  indexMetaData.getIndexUUID(), e);
@@ -435,22 +418,6 @@ public class IndicesClusterStateService extends AbstractLifecycleComponent imple
                 indexService.updateMetaData(newIndexMetaData);
                 try {
                     indexService.updateMapping(newIndexMetaData);
-
-                    if (event.updateCqlSchema()) {
-                        // the coordinator updates CQL schema
-                        for (ObjectObjectCursor<String,MappingMetaData> cursor : newIndexMetaData.getMappings()) {
-                            MappingMetaData mappingMd = cursor.value;
-                            if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                                try {
-                                    clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, true);
-                                } catch (IOException e) {
-                                    if (logger.isWarnEnabled()) {
-                                        logger.warn("[{}][{}] failed to update CQL schema", newIndexMetaData.getIndex(),  newIndexMetaData.getIndexUUID(), e);
-                                    }
-                                }
-                            }
-                        }
-                    }
                 } catch (Exception e) {
                     indicesService.removeIndex(indexService.index(), FAILURE, "removing index (mapping update failed)");
                 }

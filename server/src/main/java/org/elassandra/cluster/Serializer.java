@@ -22,6 +22,7 @@ package org.elassandra.cluster;
 import com.google.common.collect.ImmutableList;
 import com.google.common.net.InetAddresses;
 
+import org.apache.cassandra.cql3.UserTypes;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.db.marshal.BytesType;
 import org.apache.cassandra.db.marshal.CollectionType;
@@ -236,7 +237,8 @@ public class Serializer {
         if (type instanceof UserType) {
             UserType udt = (UserType) type;
             Map<String, Object> mapValue = new HashMap<String, Object>();
-            ByteBuffer[] components = udt.split(bb);
+            UserTypes.Value udtValue = UserTypes.Value.fromSerialized(bb, udt);
+            ByteBuffer[] components = udtValue.elements;
 
             if (SchemaManager.GEO_POINT_TYPE.equals(ByteBufferUtil.string(udt.name))) {
                 if (components[0] != null)

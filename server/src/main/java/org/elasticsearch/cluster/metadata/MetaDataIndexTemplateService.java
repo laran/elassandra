@@ -20,6 +20,8 @@ package org.elasticsearch.cluster.metadata;
 
 import com.carrotsearch.hppc.cursors.ObjectCursor;
 
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.transport.Event;
 import org.apache.lucene.util.CollectionUtil;
 import org.elasticsearch.Version;
 import org.elasticsearch.action.admin.indices.alias.Alias;
@@ -48,6 +50,7 @@ import org.elasticsearch.indices.IndicesService;
 import org.elasticsearch.indices.InvalidIndexTemplateException;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -102,9 +105,14 @@ public class MetaDataIndexTemplateService extends AbstractComponent {
             public boolean doPresistMetaData() {
                 return true;
             }
-            
+
             @Override
-            public ClusterState execute(ClusterState currentState) {
+            public ClusterState execute(ClusterState currentState) throws Exception {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
                 Set<String> templateNames = new HashSet<>();
                 for (ObjectCursor<String> cursor : currentState.metaData().templates().keys()) {
                     String templateName = cursor.value;
@@ -174,9 +182,14 @@ public class MetaDataIndexTemplateService extends AbstractComponent {
             public boolean doPresistMetaData() {
                 return true;
             }
-            
+
             @Override
             public ClusterState execute(ClusterState currentState) throws Exception {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) throws Exception {
                 if (request.create && currentState.metaData().templates().containsKey(request.name)) {
                     throw new IllegalArgumentException("index_template [" + request.name + "] already exists");
                 }

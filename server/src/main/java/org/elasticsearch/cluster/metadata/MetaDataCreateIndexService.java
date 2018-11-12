@@ -23,6 +23,10 @@ import com.carrotsearch.hppc.cursors.ObjectObjectCursor;
 import com.google.common.collect.ImmutableSet;
 
 import org.apache.cassandra.config.Schema;
+import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.schema.KeyspaceMetadata;
+import org.apache.cassandra.transport.Event;
+import org.apache.cassandra.utils.Pair;
 import org.apache.logging.log4j.Logger;
 import org.apache.logging.log4j.message.ParameterizedMessage;
 import org.apache.logging.log4j.util.Supplier;
@@ -87,6 +91,7 @@ import org.joda.time.DateTimeZone;
 import java.io.UnsupportedEncodingException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -276,12 +281,13 @@ public class MetaDataCreateIndexService extends AbstractComponent {
         }
 
         @Override
-        public boolean updateCqlSchema() {
-            return true;
+        public ClusterState execute(ClusterState currentState) throws Exception {
+            // dummy cluster state update for test purpose (does not apply CQL schema mutations)
+            return execute(currentState, new ArrayList<Mutation>(), new ArrayList<Event.SchemaChange>());
         }
 
         @Override
-        public ClusterState execute(ClusterState currentState) throws Exception {
+        public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) throws Exception {
             Index createdIndex = null;
             String removalExtraInfo = null;
             IndexRemovalReason removalReason = IndexRemovalReason.FAILURE;
@@ -556,13 +562,13 @@ public class MetaDataCreateIndexService extends AbstractComponent {
                         // don't create a keyspace while cassandra is not fully started.
                         String keyspaceName = indexMetaData.keyspace();
                         logger.debug("creating if not exists keyspace {} with RF={}", keyspaceName, indexMetaData.getNumberOfReplicas()+1);
-                        clusterService.getSchemaManager().createIndexKeyspace(keyspaceName, indexMetaData.getNumberOfReplicas()+1, indexMetaData.replication());
+                        KeyspaceMetadata ksm  = clusterService.getSchemaManager().createOrUpdateKeyspace(keyspaceName, indexMetaData.getNumberOfReplicas()+1, indexMetaData.replication(), mutations, events);
 
                         // create a cassandra table per type.
                         for (ObjectObjectCursor<String,MappingMetaData> cursor : indexMetaData.getMappings()) {
                             MappingMetaData mappingMd = cursor.value;
                             if (mappingMd.type() != null && !mappingMd.type().equals(MapperService.DEFAULT_MAPPING)) {
-                                clusterService.getSchemaManager().updateTableSchema(indexService.mapperService(), mappingMd, false);
+                                ksm = clusterService.getSchemaManager().updateTableSchema(ksm, indexService.mapperService(), mappingMd, mutations, events);
                             }
                         }
                     } else {

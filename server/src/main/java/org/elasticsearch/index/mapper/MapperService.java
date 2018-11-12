@@ -26,6 +26,7 @@ import com.google.common.collect.Maps;
 
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.ColumnDefinition;
+import org.apache.cassandra.config.ColumnDefinition.ClusteringOrder;
 import org.apache.cassandra.cql3.CQL3Type;
 import org.apache.cassandra.cql3.CQLFragmentParser;
 import org.apache.cassandra.cql3.ColumnIdentifier;
@@ -303,10 +304,13 @@ public class MapperService extends AbstractIndexComponent implements Closeable {
                                 props.put(TypeParsers.CQL_PARTITION_KEY, true);
                             }
                         }
-                        if (metadata.getColumnDefinition(new ColumnIdentifier(columnName, true)).isStatic()) {
+                        ColumnDefinition colDef = metadata.getColumnDefinition(new ColumnIdentifier(columnName, true));
+                        if (colDef.isStatic()) {
                             props.put(TypeParsers.CQL_STATIC_COLUMN, true);
                         }
-
+                        if (colDef.clusteringOrder() == ClusteringOrder.DESC) {
+                            props.put(TypeParsers.CQL_CLUSTERING_KEY_DESC, true);
+                        }
                         CQL3Type.Raw rawType = CQLFragmentParser.parseAny(CqlParser::comparatorType, row.getString("type"), "CQL type");
                         AbstractType<?> atype =  rawType.prepare(ksName).getType();
                         buildCollectionMapping(props, atype);
