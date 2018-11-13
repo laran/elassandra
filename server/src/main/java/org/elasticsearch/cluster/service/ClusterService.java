@@ -31,10 +31,10 @@ import org.apache.cassandra.cql3.QueryProcessor;
 import org.apache.cassandra.cql3.UntypedResultSet;
 import org.apache.cassandra.cql3.UntypedResultSet.Row;
 import org.apache.cassandra.cql3.statements.ParsedStatement;
-import org.apache.cassandra.cql3.statements.TableAttributes;
 import org.apache.cassandra.db.ConsistencyLevel;
 import org.apache.cassandra.db.Keyspace;
 import org.apache.cassandra.db.KeyspaceNotDefinedException;
+import org.apache.cassandra.db.Mutation;
 import org.apache.cassandra.db.SystemKeyspace;
 import org.apache.cassandra.db.marshal.AbstractType;
 import org.apache.cassandra.exceptions.ConfigurationException;
@@ -46,15 +46,17 @@ import org.apache.cassandra.exceptions.WriteTimeoutException;
 import org.apache.cassandra.index.Index;
 import org.apache.cassandra.locator.AbstractReplicationStrategy;
 import org.apache.cassandra.locator.NetworkTopologyStrategy;
+import org.apache.cassandra.schema.IndexMetadata;
 import org.apache.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.schema.ReplicationParams;
-import org.apache.cassandra.schema.TableParams;
+import org.apache.cassandra.schema.SchemaKeyspace;
 import org.apache.cassandra.service.ClientState;
 import org.apache.cassandra.service.ElassandraDaemon;
-import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.service.QueryState;
 import org.apache.cassandra.service.StorageService;
+import org.apache.cassandra.transport.Event;
 import org.apache.cassandra.transport.messages.ResultMessage;
+import org.apache.cassandra.utils.ByteBufferUtil;
 import org.apache.cassandra.utils.FBUtilities;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.logging.log4j.message.ParameterizedMessage;
@@ -90,6 +92,7 @@ import org.elasticsearch.cluster.node.DiscoveryNode.DiscoveryNodeStatus;
 import org.elasticsearch.cluster.routing.OperationRouting;
 import org.elasticsearch.cluster.routing.ShardRoutingState;
 import org.elasticsearch.common.SuppressForbidden;
+import org.elasticsearch.common.compress.CompressedXContent;
 import org.elasticsearch.common.inject.Inject;
 import org.elasticsearch.common.settings.ClusterSettings;
 import org.elasticsearch.common.settings.Setting;
@@ -112,6 +115,7 @@ import java.net.InetAddress;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -139,6 +143,8 @@ public class ClusterService extends BaseClusterService {
 
     public static final String ELASTIC_ADMIN_KEYSPACE = "elastic_admin";
     public static final String ELASTIC_ADMIN_METADATA_TABLE = "metadata";
+    public static final String ELASTIC_ADMIN_METADATA_VERSION = "version";
+    public static final String ELASTIC_ADMIN_METADATA_HOST_ID = "host_id";
 
     public static final String SETTING_CLUSTER_DATACENTER_GROUP = "datacenter.group";
     public static final Setting<List<String>> SETTING_DATCENTER_GROUP = listSetting(SETTING_CLUSTER_DATACENTER_GROUP, emptyList(), Function.identity(), Property.NodeScope);
@@ -804,6 +810,25 @@ public class ClusterService extends BaseClusterService {
         }
     }
 
+    public void writeMetadataAsTableExtensions(MetaData metaData, final Collection<Mutation> mutations, final Collection<Event.SchemaChange> events) throws ConfigurationException, IOException {
+        KeyspaceMetadata ksm = Schema.instance.getKSMetaData(elasticAdminKeyspaceName);
+        CFMetaData cfm = ksm.getTableOrViewNullable(ELASTIC_ADMIN_METADATA_TABLE);
+
+        Map<String, ByteBuffer> extensions = new HashMap<>();
+        if (cfm.params.extensions != null)
+            extensions.putAll(cfm.params.extensions);
+        byte[] metadataBytes = MetaData.Builder.toBytes(metaData, MetaData.CQL_FORMAT_PARAMS);
+        extensions.put(ELASTIC_ADMIN_METADATA_TABLE, ByteBuffer.wrap(metadataBytes) );
+        extensions.put(ELASTIC_ADMIN_METADATA_VERSION, ByteBufferUtil.bytes(metaData.version()) );
+        extensions.put(ELASTIC_ADMIN_METADATA_HOST_ID, ByteBufferUtil.bytes(SystemKeyspace.getLocalHostId()) );
+
+        Mutation.SimpleBuilder builder = SchemaKeyspace.makeCreateKeyspaceMutation(ksm.name, FBUtilities.timestampMicros());
+        SchemaKeyspace.addTableExtensionsToSchemaMutation(cfm, extensions, builder);
+
+        mutations.add(builder.build());
+        events.add(new Event.SchemaChange(Event.SchemaChange.Change.UPDATED, Event.SchemaChange.Target.TABLE, elasticAdminKeyspaceName, ELASTIC_ADMIN_METADATA_TABLE));
+    }
+
     public void writeMetaDataAsComment(MetaData metaData) throws ConfigurationException, IOException {
         writeMetaDataAsComment( MetaData.Builder.toXContent(metaData, MetaData.CASSANDRA_FORMAT_PARAMS), metaData.version());
     }
@@ -816,9 +841,15 @@ public class ClusterService extends BaseClusterService {
             this.metadataToSaveSemaphore.release();
     }
 
-    /**
-     * Should only be used after a SCHEMA change.
-     */
+    // try to read metadata from table extension first, and fall back to comment.
+    public MetaData readMetaDataFromSchema() throws NoPersistedMetaDataException {
+        try {
+            return readMetaDataFromTableExtensions();
+        } catch(NoPersistedMetaDataException e) {
+            logger.info("Failed to read metadata from table extensions, falling back to table comment");
+            return readMetaDataAsComment();
+        }
+    }
 
     public MetaData readMetaDataAsComment() throws NoPersistedMetaDataException {
         try {
@@ -836,6 +867,69 @@ public class ClusterService extends BaseClusterService {
         }
     }
 
+    /**
+     * read cluster metadata from CQL table extensions.
+     * @return
+     * @throws NoPersistedMetaDataException
+     */
+    public MetaData readMetaDataFromTableExtensions() throws NoPersistedMetaDataException {
+        KeyspaceMetadata ksm = Schema.instance.getKSMetaData(this.elasticAdminKeyspaceName);
+        if (ksm == null)
+            throw new NoPersistedMetaDataException("Keyspace "+this.elasticAdminKeyspaceName+" does not exists");
+
+        CFMetaData cfm = ksm.getTableOrViewNullable(ELASTIC_ADMIN_METADATA_TABLE);
+        if (cfm != null && cfm.params.extensions != null) {
+            MetaData metaData;
+            try {
+                byte[] bytes = ByteBufferUtil.getArray(cfm.params.extensions.get(ELASTIC_ADMIN_METADATA_TABLE));
+                metaData =  metaStateService.loadGlobalState(bytes);
+
+                // load table extensions for tables having an elastic 2i index
+                Map<String, IndexMetaData.Builder> imdBuilders = new HashMap<>();
+                for(String ksName : Schema.instance.getUserKeyspaces()) {
+                    KeyspaceMetadata ksmx = Schema.instance.getKSMetaData(ksName);
+                    for(CFMetaData cfmx : ksmx.tables) {
+                        for(IndexMetadata index : cfmx.getIndexes()) {
+                            if (index.isCustom() && index.name.startsWith("elastic_") && cfmx.params.extensions != null) {
+                                for(Map.Entry<String, ByteBuffer> entry : cfmx.params.extensions.entrySet()) {
+                                    final IndexMetaData imd = metaData.index(entry.getKey());
+                                    final MappingMetaData mappingMd = new MappingMetaData(new CompressedXContent(ByteBufferUtil.getArray(entry.getValue())));
+                                    logger.debug("Loading index=[{}] type=[{}] mapping={}", entry.getKey(), mappingMd.type(), mappingMd.getSourceAsMap());
+                                    IndexMetaData.Builder builder = imdBuilders.computeIfAbsent(entry.getKey(), k -> {
+                                        return imd == null ? IndexMetaData.builder(entry.getKey()) : IndexMetaData.builder(imd);
+                                    });
+                                    builder.putMapping(mappingMd);
+                                }
+                            }
+                        }
+                    }
+                }
+                if (imdBuilders.size() > 0) {
+                    MetaData.Builder metadataBuilder = MetaData.builder(metaData);
+                    for(IndexMetaData.Builder indexMetaDataBuilder : imdBuilders.values())
+                        metadataBuilder.put(indexMetaDataBuilder);
+                    metaData = metadataBuilder.build();
+                }
+
+                // initialize typeToCfName map for later reverse lookup in ElasticSecondaryIndex
+                for(ObjectCursor<IndexMetaData> indexCursor : metaData.indices().values()) {
+                    for(ObjectCursor<MappingMetaData> mappingCursor :  indexCursor.value.getMappings().values()) {
+                        String cfName = SchemaManager.typeToCfName(indexCursor.value.keyspace(), mappingCursor.value.type());
+                        if (logger.isDebugEnabled())
+                            logger.debug("keyspace.table={}.{} registred for elasticsearch index.type={}.{}",
+                                    indexCursor.value.keyspace(), cfName, indexCursor.value.getIndex().getName(), mappingCursor.value.type());
+                    }
+                }
+            } catch (Exception e) {
+                logger.error("Failed to parse metadata extensions", e);
+                throw new NoPersistedMetaDataException("Failed to parse metadata extentions", e);
+            }
+            logger.info("Elasticsearch metadata succesfully loaded from CQL table extensions metadata.version={}", metaData.version());
+            return metaData;
+        }
+        throw new NoPersistedMetaDataException("No extension found for table "+this.elasticAdminKeyspaceName+"."+ELASTIC_ADMIN_METADATA_TABLE);
+    }
+
     private MetaData parseMetaDataString(String metadataString) throws NoPersistedMetaDataException {
         if (metadataString != null && metadataString.length() > 0) {
             MetaData metaData;
@@ -848,7 +942,7 @@ public class ClusterService extends BaseClusterService {
                         String cfName = SchemaManager.typeToCfName(indexCursor.value.keyspace(), mappingCursor.value.type());
                         if (logger.isDebugEnabled())
                             logger.debug("keyspace.table={}.{} registred for elasticsearch index.type={}.{}",
-		           indexCursor.value.keyspace(), cfName, indexCursor.value.getIndex().getName(), mappingCursor.value.type());
+                                    indexCursor.value.keyspace(), cfName, indexCursor.value.getIndex().getName(), mappingCursor.value.type());
                     }
                 }
             } catch (Exception e) {

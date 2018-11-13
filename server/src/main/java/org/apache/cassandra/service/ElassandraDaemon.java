@@ -245,7 +245,7 @@ public class ElassandraDaemon extends CassandraDaemon {
     public void systemKeyspaceInitialized() {
         if (node != null) {
             try {
-                systemMetadata = this.node.clusterService().readMetaDataAsComment();
+                systemMetadata = this.node.clusterService().readMetaDataFromSchema();
                 if (systemMetadata != null) {
                     activateAndWaitShards("before opening user keyspaces");
                 }
@@ -311,7 +311,7 @@ public class ElassandraDaemon extends CassandraDaemon {
             try
             {
                 // load mapping from schema jsut before bootstrapping C*
-                systemMetadata = this.node.clusterService().readMetaDataAsComment();
+                systemMetadata = this.node.clusterService().readMetaDataFromSchema();
                 activateAndWaitShards("before cassandra boostraping");
             } catch(Throwable e)
             {
@@ -354,7 +354,7 @@ public class ElassandraDaemon extends CassandraDaemon {
                         logger.info("waiting for schema information to complete");
                         MigrationManager.waitUntilReadyForBootstrap();
                     }
-                    systemMetadata = this.node.clusterService().readMetaDataAsComment();
+                    systemMetadata = this.node.clusterService().readMetaDataFromSchema();
                 } catch(Throwable e)
                 {
                     logger.warn("Failed to load elasticsearch mapping from CQL schema after after joining without boostraping:", e);

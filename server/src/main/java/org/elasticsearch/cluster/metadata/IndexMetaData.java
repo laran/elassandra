@@ -1277,7 +1277,7 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
             builder.startObject(indexMetaData.getIndex().getName());
 
             builder.field(KEY_VERSION, indexMetaData.getVersion());
-            if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false)) {
+            if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false) && !params.paramAsBoolean(MetaData.CONTEXT_CQL_PARAM, false)) {
                 builder.field(KEY_ROUTING_NUM_SHARDS, indexMetaData.getRoutingNumShards());
             }
             builder.field(KEY_STATE, indexMetaData.getState().toString().toLowerCase(Locale.ENGLISH));
@@ -1289,12 +1289,12 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
             for (String key : indexMetaData.getSettings().keySet()) {
                 switch (key) {
                 case SETTING_NUMBER_OF_SHARDS:
-                    if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false)) {
+                    if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false) && !params.paramAsBoolean(MetaData.CONTEXT_CQL_PARAM, false)) {
                         builder.field(SETTING_NUMBER_OF_SHARDS, indexMetaData.getNumberOfShards());
                     }
                     break;
                 case SETTING_NUMBER_OF_REPLICAS:
-                    if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false)) {
+                    if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false) && !params.paramAsBoolean(MetaData.CONTEXT_CQL_PARAM, false)) {
                         builder.field(SETTING_NUMBER_OF_REPLICAS, indexMetaData.getNumberOfReplicas());
                     }
                     break;
@@ -1304,15 +1304,17 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
             }
             builder.endObject();
 
-            builder.startArray(KEY_MAPPINGS);
-            for (ObjectObjectCursor<String, MappingMetaData> cursor : indexMetaData.getMappings()) {
-                if (binary) {
-                    builder.value(cursor.value.source().compressed());
-                } else {
-                    builder.map(XContentHelper.convertToMap(new BytesArray(cursor.value.source().uncompressed()), true).v2());
+            if (!params.paramAsBoolean(MetaData.CONTEXT_CQL_PARAM, false)) {
+                builder.startArray(KEY_MAPPINGS);
+                for (ObjectObjectCursor<String, MappingMetaData> cursor : indexMetaData.getMappings()) {
+                    if (binary) {
+                        builder.value(cursor.value.source().compressed());
+                    } else {
+                        builder.map(XContentHelper.convertToMap(new BytesArray(cursor.value.source().uncompressed()), true).v2());
+                    }
                 }
+                builder.endArray();
             }
-            builder.endArray();
 
             for (ObjectObjectCursor<String, Custom> cursor : indexMetaData.getCustoms()) {
                 builder.startObject(cursor.key);
@@ -1326,7 +1328,7 @@ public class IndexMetaData implements Diffable<IndexMetaData>, ToXContentFragmen
             }
             builder.endObject();
 
-            if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false)) {
+            if (!params.paramAsBoolean(MetaData.CONTEXT_CASSANDRA_PARAM, false) && !params.paramAsBoolean(MetaData.CONTEXT_CQL_PARAM, false)) {
                 builder.startArray(KEY_PRIMARY_TERMS);
                 for (int i = 0; i < indexMetaData.getNumberOfShards(); i++) {
                     builder.value(indexMetaData.primaryTerm(i));

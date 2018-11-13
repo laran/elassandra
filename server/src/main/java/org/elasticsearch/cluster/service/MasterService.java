@@ -20,6 +20,7 @@
 package org.elasticsearch.cluster.service;
 
 import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.exceptions.ConfigurationException;
 import org.apache.cassandra.service.MigrationManager;
 import org.apache.cassandra.transport.Event;
 import org.apache.logging.log4j.Logger;
@@ -57,6 +58,7 @@ import org.elasticsearch.common.util.concurrent.PrioritizedEsThreadPoolExecutor;
 import org.elasticsearch.discovery.Discovery;
 import org.elasticsearch.threadpool.ThreadPool;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -244,11 +246,27 @@ public class MasterService extends AbstractLifecycleComponent {
                 logger.debug("cluster state updated, version [{}], source [{}]", taskOutputs.newClusterState.version(), summary);
             }
 
-            if (taskOutputs.mutations != null && taskOutputs.mutations.size() > 0) {
-                logger.debug("Applying CQL schema mutations={}", taskOutputs.mutations);
-                MigrationManager.announceBlocking(taskOutputs.mutations, false);
-                logger.info("CQL SchemaChanges={}", taskOutputs.events);
+            if (taskOutputs.doPersistMetadata) {
+                Collection<Mutation> mutations = new ArrayList<>();
+                Collection<Event.SchemaChange> events = new ArrayList();
+
+                try {
+                    // TODO: track change to update CQL schema when really needed
+                    clusterService.writeMetadataAsTableExtensions(taskOutputs.newClusterState.getMetaData(), mutations, events);
+                } catch (ConfigurationException | IOException e1) {
+                    throw new RuntimeException(e1);
+                }
+
+                if (taskOutputs.mutations != null && taskOutputs.mutations.size() > 0) {
+                    mutations.addAll(taskOutputs.mutations);
+                    events.addAll(taskOutputs.events);
+                }
+
+                logger.debug("Applying CQL schema mutations={}", mutations);
+                MigrationManager.announceBlocking(mutations, false);
+                logger.info("CQL SchemaChanges={}", events);
             }
+
 
             // build routing table when keyspaces are created
             ClusterState newClusterState = ClusterState.builder(taskOutputs.newClusterState)

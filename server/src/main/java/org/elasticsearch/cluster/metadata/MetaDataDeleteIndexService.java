@@ -26,6 +26,8 @@ import com.google.common.collect.Multimap;
 import org.apache.cassandra.config.CFMetaData;
 import org.apache.cassandra.config.Schema;
 import org.apache.cassandra.db.Mutation;
+import org.apache.cassandra.exceptions.ConfigurationException;
+import org.apache.cassandra.schema.KeyspaceMetadata;
 import org.apache.cassandra.transport.Event;
 import org.elassandra.cluster.SchemaManager;
 import org.elasticsearch.action.ActionListener;
@@ -48,6 +50,7 @@ import org.elasticsearch.index.mapper.MapperService;
 import org.elasticsearch.snapshots.SnapshotsService;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Set;
@@ -96,15 +99,20 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
 
             @Override
             public ClusterState execute(final ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
-                return deleteIndices(currentState, Sets.newHashSet(request.indices()));
+                return deleteIndices(currentState, Sets.newHashSet(request.indices()), mutations, events);
             }
         });
+    }
+
+    // for testing purposes only
+    public ClusterState deleteIndices(ClusterState currentState, Set<Index> indices) {
+        return deleteIndices(currentState, indices, new ArrayList<Mutation>(), new ArrayList<Event.SchemaChange>());
     }
 
     /**
      * Delete some indices from the cluster state.
      */
-    public ClusterState deleteIndices(ClusterState currentState, Set<Index> indices) {
+    public ClusterState deleteIndices(ClusterState currentState, Set<Index> indices, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
         final MetaData meta = currentState.metaData();
         final Set<IndexMetaData> metaDatas = indices.stream().map(i -> meta.getIndexSafe(i)).collect(toSet());
         // Check if index deletion conflicts with any running snapshots
@@ -160,8 +168,8 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
                     }
                     if (tableCount == 0) {
                         try {
-                            MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropIndexKeyspace(imd.keyspace());
-                        } catch (IOException e) {
+                            MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropIndexKeyspace(imd.keyspace(), mutations, events);
+                        } catch (ConfigurationException e) {
                             throw new RuntimeException(e);
                         }
                     }
@@ -169,35 +177,43 @@ public class MetaDataDeleteIndexService extends AbstractComponent {
             }
         } else {
             for(IndexMetaData imd : unindexedTables.keySet()) {
-                if (Schema.instance.getKeyspaceInstance(imd.keyspace()) != null) {
+                KeyspaceMetadata ksm = Schema.instance.getKSMetaData(imd.keyspace());
+                if (ksm != null) {
                     // keyspace still exists.
                     if (imd.getSettings().getAsBoolean(IndexMetaData.SETTING_DROP_ON_DELETE_INDEX, clusterDropOnDelete)) {
                         int tableCount = 0;
-                        for(CFMetaData tableOrView : Schema.instance.getKeyspaceInstance(imd.keyspace()).getMetadata().tablesAndViews()) {
+                        for(CFMetaData tableOrView : ksm.tablesAndViews()) {
                             if (tableOrView.isCQLTable())
                                 tableCount++;
                         }
                         if (tableCount == unindexedTables.get(imd).size()) {
                             // drop keyspace instead of droping all tables.
                             try {
-                                MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropIndexKeyspace(imd.keyspace());
-                            } catch (IOException e) {
+                                MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropIndexKeyspace(imd.keyspace(), mutations, events);
+                            } catch (ConfigurationException e) {
                                 throw new RuntimeException(e);
                             }
                         } else {
                             // drop tables
-                            for(String table : unindexedTables.get(imd))
-                                MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropTable(imd.keyspace(), table);
+                            for(String table : unindexedTables.get(imd)) {
+                                CFMetaData cfm = Schema.instance.getCFMetaData(ksm.name, table);
+                                if (cfm != null)
+                                    MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropTable(ksm, cfm, mutations, events);
+                            }
                         }
                     } else {
                         // drop secondary indices
-                        for(String table : unindexedTables.get(imd))
-                            MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropTable(imd.keyspace(), table);
+                        for(String table : unindexedTables.get(imd)) {
+                            CFMetaData cfm = Schema.instance.getCFMetaData(ksm.name, table);
+                            if (cfm != null)
+                                MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropTable(ksm, cfm, mutations, events);
+                        }
                     }
                 } else {
                     // drop secondary indices
-                    for(String table : unindexedTables.get(imd))
-                        MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropSecondaryIndex(imd.keyspace(), table);
+                    for(String table : unindexedTables.get(imd)) {
+                        MetaDataDeleteIndexService.this.clusterService.getSchemaManager().dropSecondaryIndex(ksm, table, mutations, events);
+                    }
                 }
             }
         }

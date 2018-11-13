@@ -101,12 +101,17 @@ public class MetaDataIndexAliasesService extends AbstractComponent {
 
                 @Override
                 public ClusterState execute(ClusterState currentState, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
-                    return innerExecute(currentState, request.actions());
+                    return innerExecute(currentState, request.actions(), mutations, events);
                 }
             });
     }
 
+    // for test purposes only
     ClusterState innerExecute(ClusterState currentState, Iterable<AliasAction> actions) {
+        return innerExecute(currentState, actions, new ArrayList<Mutation>(), new ArrayList<Event.SchemaChange>());
+    }
+
+    ClusterState innerExecute(ClusterState currentState, Iterable<AliasAction> actions, Collection<Mutation> mutations, Collection<Event.SchemaChange> events) {
         List<Index> indicesToClose = new ArrayList<>();
         Map<String, IndexService> indices = new HashMap<>();
         try {
@@ -127,7 +132,7 @@ public class MetaDataIndexAliasesService extends AbstractComponent {
             }
             // Remove the indexes if there are any to remove
             if (changed) {
-                currentState = deleteIndexService.deleteIndices(currentState, indicesToDelete);
+                currentState = deleteIndexService.deleteIndices(currentState, indicesToDelete, mutations, events);
             }
             MetaData.Builder metadata = MetaData.builder(currentState.metaData());
             // Run the remaining alias actions

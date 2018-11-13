@@ -152,10 +152,10 @@ public class Gateway extends AbstractComponent {
         listener.onSuccess(builder.build());
     }
     */
-    
+
     public void performStateRecovery(final GatewayStateRecoveredListener listener) throws GatewayException {
         ClusterState.Builder builder = ClusterState.builder(clusterService.state());
-        
+
         MetaData metadata = null;
         if (Keyspace.isInitialized()) {
             // try recover from elastic_admin.metadata
@@ -167,14 +167,14 @@ public class Gateway extends AbstractComponent {
                         listener.onSuccess( builder.metaData(metadata).build() );
                         return;
                     }
-                } 
+                }
             } catch (Exception e) {
             }
         }
-        
+
         // fallback to CQL schema
         try {
-            metadata = clusterService.readMetaDataAsComment();
+            metadata = clusterService.readMetaDataFromSchema();
             logger.info("Successfull cluster state recovery from CQL schema version={}/{}", metadata.clusterUUID(), metadata.version());
             listener.onSuccess( builder.metaData(metadata).build() );
             return;
@@ -187,7 +187,7 @@ public class Gateway extends AbstractComponent {
             listener.onSuccess( builder.metaData(metadata).build() );
         }
     }
-    
+
     private void logUnknownSetting(String settingType, Map.Entry<String, String> e) {
         logger.warn("ignoring unknown {} setting: [{}] with value [{}]; archiving", settingType, e.getKey(), e.getValue());
     }
